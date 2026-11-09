@@ -35,3 +35,6 @@ uploads/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Generated synthetic test PDFs (regenerate with scripts/generate_synthetic_pdfs.py)
+data/synthetic/
