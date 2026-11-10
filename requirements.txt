@@ -12,3 +12,5 @@ PyJWT==2.15.1
 structlog==26.1.0
 redis==5.3.1
 arq==0.28.0
+python-multipart==0.0.33
+PyMuPDF==1.28.2

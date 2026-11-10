@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     frontend_origin: str = "http://localhost:5173"
 
+    storage_backend: Literal["local"] = "local"
+    storage_local_path: str = "./storage"
+    max_upload_mb: int = Field(default=10, ge=1, le=100)
+
     login_max_attempts_per_email: int = Field(default=5, ge=1)
     login_max_attempts_per_ip: int = Field(default=20, ge=1)
     login_window_seconds: int = Field(default=900, ge=1)
@@ -68,6 +72,10 @@ class Settings(BaseSettings):
             if not self.frontend_origin.startswith("https://"):
                 raise ValueError("FRONTEND_ORIGIN must use https in production")
         return self
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def access_token_ttl_seconds(self) -> int:

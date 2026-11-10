@@ -64,6 +64,11 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data/storage
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+    volumes:
+      - storage:/data/storage
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -83,11 +88,22 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: *database-url
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data/storage
+      MAX_PDF_PAGES: ${MAX_PDF_PAGES:-50}
+    volumes:
+      - storage:/data/storage
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
   pgdata:
   redisdata:
+  storage:

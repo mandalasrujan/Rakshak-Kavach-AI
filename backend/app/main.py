@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from arq.connections import ArqRedis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
@@ -14,6 +15,7 @@ from app.core.errors import ErrorResponse, register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.request_context import RequestContextMiddleware
 from app.core.security import PasswordService, TokenService
+from app.core.storage import create_storage
 from app.db.session import create_engine, create_sessionmaker
 
 API_PREFIX = "/api/v1"
@@ -34,9 +36,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             socket_connect_timeout=2,
             socket_timeout=2,
         )
+        # Job queue client (arq needs raw bytes, so a separate client from app.state.redis).
+        app.state.arq = ArqRedis.from_url(
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        app.state.storage = create_storage(settings.storage_backend, settings.storage_local_path)
         try:
             yield
         finally:
+            await app.state.arq.aclose()
             await app.state.redis.aclose()
             await engine.dispose()
 

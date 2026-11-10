@@ -11,6 +11,7 @@ from app.core.errors import CsrfRejectedError
 from app.models.patient import Patient
 from app.services.auth_service import AuthService
 from app.services.consent_service import ConsentService
+from app.services.document_service import DocumentService
 from app.services.health_service import HealthService
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -89,3 +90,13 @@ async def require_consent(
     """Use on every route that processes patient data (uploads, chat)."""
     await consent.ensure_granted()
     return patient
+
+
+def get_document_service(
+    request: Request,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentService:
+    return DocumentService(
+        session, patient.id, storage=request.app.state.storage, queue=request.app.state.arq
+    )

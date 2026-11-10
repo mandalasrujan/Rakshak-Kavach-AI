@@ -94,9 +94,14 @@ def make_settings(**overrides: object) -> Settings:
 
 
 @pytest.fixture
-def settings_factory(migrated_database_url: str, redis_url: str):  # type: ignore[no-untyped-def]
+def settings_factory(migrated_database_url: str, redis_url: str, tmp_path: Path):  # type: ignore[no-untyped-def]
     def factory(**overrides: object) -> Settings:
-        values = {"database_url": migrated_database_url, "redis_url": redis_url, **overrides}
+        values = {
+            "database_url": migrated_database_url,
+            "redis_url": redis_url,
+            "storage_local_path": str(tmp_path / "storage"),
+            **overrides,
+        }
         return make_settings(**values)
 
     return factory
@@ -135,3 +140,13 @@ async def redis_client(redis_url: str) -> AsyncIterator[Redis]:
         yield redis
     finally:
         await redis.aclose()
+
+
+@pytest.fixture(scope="session")
+def synthetic_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The deterministic synthetic PDFs from scripts/generate_synthetic_pdfs.py."""
+    from scripts.generate_synthetic_pdfs import generate
+
+    out = tmp_path_factory.mktemp("synthetic")
+    generate(out)
+    return out

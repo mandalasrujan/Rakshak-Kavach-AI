@@ -36,3 +36,11 @@ async def grant_consent(client: AsyncClient) -> Response:
     )
     assert response.status_code == 200, response.text
     return response
+
+
+async def upload(client: AsyncClient, data: bytes, filename: str = "report.pdf") -> Response:
+    return await client.post(
+        "/api/v1/patient/documents",
+        files={"file": (filename, data, "application/pdf")},
+        headers=CSRF,
+    )

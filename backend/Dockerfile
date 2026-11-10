@@ -13,7 +13,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app/backend
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
+    && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app \
+    && mkdir -p /data/storage && chown app:app /data/storage
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY backend/ /app/backend/

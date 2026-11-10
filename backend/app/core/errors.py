@@ -63,6 +63,24 @@ class ConsentRequiredError(AppError):
     message = "Active consent to the current notice is required."
 
 
+class NotFoundError(AppError):
+    status_code = 404
+    code = "not_found"
+    message = "Resource not found."
+
+
+class PayloadTooLargeError(AppError):
+    status_code = 413
+    code = "file_too_large"
+    message = "The file exceeds the upload size limit."
+
+
+class UnsupportedFileTypeError(AppError):
+    status_code = 415
+    code = "unsupported_file_type"
+    message = "Only PDF files are accepted."
+
+
 class ConflictError(AppError):
     status_code = 409
     code = "conflict"
