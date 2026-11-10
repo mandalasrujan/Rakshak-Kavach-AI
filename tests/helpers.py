@@ -24,3 +24,15 @@ async def register_and_login(client: AsyncClient, email: str) -> Response:
     response = await login(client, email)
     assert response.status_code == 200, response.text
     return response
+
+
+async def grant_consent(client: AsyncClient) -> Response:
+    notice = await client.get("/api/v1/patient/consent")
+    assert notice.status_code == 200, notice.text
+    response = await client.post(
+        "/api/v1/patient/consent",
+        json={"notice_version": notice.json()["notice_version"]},
+        headers=CSRF,
+    )
+    assert response.status_code == 200, response.text
+    return response

@@ -10,6 +10,7 @@ from app.core.config import ACCESS_COOKIE_NAME, CSRF_HEADER_NAME, Settings
 from app.core.errors import CsrfRejectedError
 from app.models.patient import Patient
 from app.services.auth_service import AuthService
+from app.services.consent_service import ConsentService
 from app.services.health_service import HealthService
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -72,3 +73,19 @@ async def get_current_patient(
     request: Request, auth_service: AuthService = Depends(get_auth_service)
 ) -> Patient:
     return await auth_service.authenticate(request.cookies.get(ACCESS_COOKIE_NAME))
+
+
+def get_consent_service(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db_session),
+) -> ConsentService:
+    return ConsentService(session, patient.id)
+
+
+async def require_consent(
+    patient: Patient = Depends(get_current_patient),
+    consent: ConsentService = Depends(get_consent_service),
+) -> Patient:
+    """Use on every route that processes patient data (uploads, chat)."""
+    await consent.ensure_granted()
+    return patient

@@ -6,8 +6,13 @@ If neither is possible they are skipped with an explicit reason.
 """
 
 import os
+import signal
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+
+# Windows does not define POSIX signals like SIGUSR1, which arq.Worker.close() references.
+if not hasattr(signal, "SIGUSR1"):
+    signal.SIGUSR1 = getattr(signal, "SIGTERM", 15)  # type: ignore[attr-defined]
 
 import pytest
 from alembic import command
@@ -104,7 +109,7 @@ def settings(settings_factory) -> Settings:  # type: ignore[no-untyped-def]
 
 async def _reset_state(app) -> None:  # type: ignore[no-untyped-def]
     async with app.state.engine.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE patients CASCADE"))
+        await conn.execute(text("TRUNCATE TABLE patients, audit_log CASCADE"))
     await app.state.redis.flushdb()
 
 

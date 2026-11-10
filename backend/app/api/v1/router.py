@@ -2,8 +2,9 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, patient
+from app.api.v1 import auth, consent, patient
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(patient.router)
+api_router.include_router(consent.router)

@@ -57,10 +57,22 @@ class CsrfRejectedError(AppError):
     message = "Request rejected by cross-site request protection."
 
 
+class ConsentRequiredError(AppError):
+    status_code = 403
+    code = "consent_required"
+    message = "Active consent to the current notice is required."
+
+
 class ConflictError(AppError):
     status_code = 409
     code = "conflict"
     message = "Resource already exists."
+
+
+class ConsentNoticeOutdatedError(AppError):
+    status_code = 409
+    code = "consent_notice_outdated"
+    message = "The consent notice has changed. Review the current notice and try again."
 
 
 class RateLimitedError(AppError):
