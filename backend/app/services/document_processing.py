@@ -1,4 +1,4 @@
-"""Worker-side document pipeline: consent check → validate → mark ready/failed.
+"""Worker-side document pipeline: consent check → validate → extract chunks → ready/failed.
 
 Idempotent: terminal documents are skipped, and a document left in `processing` by a crashed
 attempt is processed again from scratch.
@@ -11,11 +11,14 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.storage import ObjectStorage
+from app.models.chunk import LAB_ROW
 from app.models.document import FAILED, PROCESSING, READY, Document
 from app.repositories.audit_repository import AuditRepository
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
 from app.services.consent_service import ConsentService
-from app.services.pdf_validation import PdfRejectedError, count_pages
+from app.services.extraction import extract_pdf
+from app.services.pdf_validation import PdfRejectedError
 
 log = structlog.get_logger(__name__)
 
@@ -47,13 +50,27 @@ class DocumentProcessor:
             await session.commit()
             data = await self._storage.get(document.storage_key)
             try:
-                pages = await asyncio.to_thread(count_pages, data, max_pages=self._max_pages)
+                result = await asyncio.to_thread(extract_pdf, data, max_pages=self._max_pages)
             except PdfRejectedError as exc:
                 return await self._fail(session, document, exc.reason)
 
-            document.pages = pages
+            # Chunks and status change commit together; a re-run replaces, never duplicates.
+            await ChunkRepository(session, patient_id).replace_for_document(
+                document.id, result.chunks
+            )
+            lab_rows = sum(1 for chunk in result.chunks if chunk.kind == LAB_ROW)
+            document.pages = result.pages
             document.status, document.failure_reason = READY, None
-            await self._audit(session, document, "document.ready", {"pages": pages})
+            await self._audit(
+                session,
+                document,
+                "document.ready",
+                {
+                    "pages": result.pages,
+                    "lab_rows": lab_rows,
+                    "narrative_chunks": len(result.chunks) - lab_rows,
+                },
+            )
             await session.commit()
             log.info("document.ready", document_id=str(document.id), patient_id=str(patient_id))
             return READY

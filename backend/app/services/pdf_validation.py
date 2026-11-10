@@ -33,11 +33,3 @@ def open_pdf(data: bytes, *, max_pages: int) -> pymupdf.Document:
         document.close()
         raise
     return document
-
-
-def count_pages(data: bytes, *, max_pages: int) -> int:
-    document = open_pdf(data, max_pages=max_pages)
-    try:
-        return document.page_count
-    finally:
-        document.close()

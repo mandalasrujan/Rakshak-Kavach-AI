@@ -2,7 +2,7 @@
 
 Rakshak Kavach AI is a patient health records assistant. Patients upload digital medical PDFs (lab reports, imaging reports, prescriptions, doctor notes) and chat with a single Medical History Agent that answers only from their own records, with page-level citations. Lab values are extracted, normalized and compared in plain code, urgent symptoms are caught by deterministic rules, and patients can share a read-only, patient-approved summary with a doctor through a QR code and PIN. It does not diagnose, predict or prescribe.
 
-**Status:** Phase 1 complete: M0 (repository and tooling), M1 (skeleton), M2 (authentication). Next milestone: M3 (consent and audit). The live deployment needs a host to be configured; see [docs/deployment.md](docs/deployment.md).
+**Status:** Phase 2 complete: M0–M2 (foundation and authentication) and M3–M5 (consent and audit, document upload and queue, table-aware extraction). Next milestone: M6 (embeddings and isolation). The live deployment needs a host to be configured; see [docs/deployment.md](docs/deployment.md).
 
 **Specification:** [`PROJECT_SPEC.md`](PROJECT_SPEC.md) is the source of truth. Working rules are in [`AGENTS.md`](AGENTS.md).
 
@@ -12,6 +12,8 @@ Rakshak Kavach AI is a patient health records assistant. Patients upload digital
 - Layered FastAPI app (router → service → repository → model), `/api/v1` prefix, one error schema, request IDs, PHI-free JSON logs.
 - `GET /health` (200 when PostgreSQL and Redis are reachable, otherwise 503).
 - Patient auth: `POST /api/v1/auth/register`, `POST /api/v1/auth/login` (argon2id, JWT in an `httpOnly`, `Secure`, `SameSite=Lax` cookie), `POST /api/v1/auth/logout` (token revoked in Redis), protected `GET /api/v1/patient/me`, CSRF and cross-site checks, login and registration rate limits.
+- Consent: `GET/POST/DELETE /api/v1/patient/consent` (versioned notice disclosing Gemini processing); uploads require active consent; every consent and document event is written to an append-only `audit_log`.
+- Documents: `POST /api/v1/patient/documents` (PDF only by magic bytes, size limit, per-patient dedup, 202), `GET /api/v1/patient/documents[/{id}]`; the ARQ worker validates (encryption, page limit), extracts one chunk per lab-table row plus page-numbered narrative chunks, and marks the document `ready` or `failed` with a reason.
 - OpenAPI docs at `/api/v1/docs`.
 - Synthetic PDF generator, 5 ADRs, one-page threat model, CI (lint, tests, Compose smoke test) and a provider-agnostic deploy workflow.
 
@@ -32,6 +34,10 @@ H='-H Content-Type:application/json -H X-CSRF-Protection:1'
 curl $H -d '{"email":"demo@example.com","password":"demo-password-123"}' http://127.0.0.1:8000/api/v1/auth/register
 curl $H -c jar.txt -d '{"email":"demo@example.com","password":"demo-password-123"}' http://127.0.0.1:8000/api/v1/auth/login
 curl -b jar.txt http://127.0.0.1:8000/api/v1/patient/me
+curl -b jar.txt http://127.0.0.1:8000/api/v1/patient/consent             # read notice_version
+curl -b jar.txt $H -d '{"notice_version":"<version>"}' http://127.0.0.1:8000/api/v1/patient/consent
+curl -b jar.txt -H X-CSRF-Protection:1 -F file=@report.pdf http://127.0.0.1:8000/api/v1/patient/documents
+curl -b jar.txt http://127.0.0.1:8000/api/v1/patient/documents             # status: queued → ready
 curl -b jar.txt -X POST -H X-CSRF-Protection:1 http://127.0.0.1:8000/api/v1/auth/logout
 ```
 
