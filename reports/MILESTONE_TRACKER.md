@@ -11,7 +11,7 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 | **Phase 1** | M0 – M2 | Foundation, Architecture, Auth | **COMPLETED & VERIFIED** |
 | **Phase 2** | M3 – M5 | Consent, Document Ingestion, Table Extraction | **COMPLETED & VERIFIED** |
 | **Phase 3** | M6 – M9 | Isolation, RLS, Embeddings, Baseline RAG, Normalization, Lab Math | **COMPLETED & VERIFIED** (live-Gemini eval pending) |
-| **Phase 4** | M10 – M13 | LangGraph Agent, Safety Nodes, Cascading Deletion, Approved Snapshots | NOT STARTED |
+| **Phase 4** | M10 – M12 (M13 not started) | LangGraph Agent, Safety Nodes, Cascading Deletion | **M10–M12 COMPLETED & VERIFIED** (live-Gemini eval pending) |
 | **Phase 5** | M14 – M17 | QR/PIN Scoped Sharing, Dashboard UI, Golden Evals, Load Testing & Polish | NOT STARTED |
 
 ---
@@ -30,9 +30,9 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 | **M7** | Baseline RAG | `/ask` with page citations, grounding guard, not-found fallback, 20-question eval + long-context baseline harness, minimal React chat | **COMPLETED** | **VERIFIED (Tests + Ruff + native run; offline eval only)** | [`M7_BASELINE_RAG.md`](M7_BASELINE_RAG.md) |
 | **M8** | Extraction & Normalization | Deterministic normalization of table rows: 47-test dictionary, unit conversions, numbers, ranges, DD/MM dates, provenance (`lab_results`) | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M8_EXTRACTION_AND_NORMALIZATION.md`](M8_EXTRACTION_AND_NORMALIZATION.md) |
 | **M9** | Lab Comparison | Plain-Python previous-vs-latest comparison (improved / worsened / stable / insufficient / not comparable), provenance, `/labs/trends` | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M9_LAB_COMPARISON.md`](M9_LAB_COMPARISON.md) |
-| **M10** | LangGraph Agent | LangGraph state graph, 3 structured tools (`search_records`, `get_labs`, `get_medications`), Postgres checkpointer, prompt injection evals | NOT STARTED | Pending Implementation | `M10_AGENT.md` (Planned) |
-| **M11** | Safety Nodes | Deterministic red-flag rules with negation window, output guard (diagnostic/prescriptive blocking + numeric consistency check) | NOT STARTED | Pending Implementation | `M11_SAFETY_NODES.md` (Planned) |
-| **M12** | Deletion Pipeline | Single cascade service deleting files, database rows, vector chunks, derived labs/meds, and citing chat checkpoints | NOT STARTED | Pending Implementation | `M12_DELETION.md` (Planned) |
+| **M10** | LangGraph Agent | LangGraph graph (consent → red flags → input guard → deterministic tools → answer → output guard), tools `search_records` / `get_labs` / `get_medications`, RLS-backed checkpointer, chats, 10/10 tool selection | **COMPLETED** | **VERIFIED (Tests + Ruff + native run; offline provider)** | [`M10_LANGGRAPH_MEDICAL_HISTORY_AGENT.md`](M10_LANGGRAPH_MEDICAL_HISTORY_AGENT.md) |
+| **M11** | Safety Nodes | Versioned YAML red flags with negation/history (recall 1.0, precision 1.0 on in-sample set), injection input guard, no-diagnosis + numeric output guard, urgent cannot be overridden | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M11_SAFETY_NODES_AND_GUARDRAILS.md`](M11_SAFETY_NODES_AND_GUARDRAILS.md) |
+| **M12** | Deletion Pipeline | Retry-safe cascade deleting file, chunks/embeddings, labs, medications, citing chats + checkpoints; row lock stops workers recreating data | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M12_SECURE_PATIENT_DATA_DELETION.md`](M12_SECURE_PATIENT_DATA_DELETION.md) |
 | **M13** | Summary Snapshots | Schema-valid doctor summary snapshot built from SQL with optional guard-checked narrative; patient preview and approval flow | NOT STARTED | Pending Implementation | `M13_SUMMARY_SNAPSHOTS.md` (Planned) |
 | **M14** | Scoped Sharing | 32-byte hashed token + 6-digit hashed PIN with 5-attempt lockout, scope limits, expiry, session exchange, token stripped from URL | NOT STARTED | Pending Implementation | `M14_SCOPED_SHARING.md` (Planned) |
 | **M15** | Dashboard | Five read-only patient dashboard panels (documents, medications, labs with previous comparison, consent, access logs) linking to source pages | NOT STARTED | Pending Implementation | `M15_DASHBOARD.md` (Planned) |
@@ -84,3 +84,18 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 - **Offline retrieval eval (fake embedder, k=6):** hit rate 0.90 (18/20); answer accuracy RAG 0.85 vs long context 0.85. Live Gemini numbers pending.
 - **Test Suite Results:** 241 passed, 0 failed, 0 skipped.
 - **Linting & Code Quality:** `ruff check .` clean; `ruff format --check .` 128 files compliant.
+
+### Phase 4 Verification (Executed 2026-11-11)
+- **Scope:** M10–M12. M13 not started.
+- **Environment:** Linux sandbox, Python 3.12, PostgreSQL 16.15 + pgvector 0.6.0, Redis 7.0.15, Node 22, LangGraph 1.2.20 (native services; Docker Hub unreachable, so container images were not rebuilt here).
+- **Docker Compose:** `docker compose config` valid (no Compose changes in Phase 4).
+- **Migrations:** 0007 → 0008 → 0009 applied to the existing Phase 3 database; `app_role` bootstrap re-run; full up/down round trip and model/migration sync verified by tests.
+- **End-to-end (native API + `arq` worker as non-owner role, `LLM_PROVIDER=fake`):**
+  - `/health` ok; `arq --check` healthy.
+  - Chat "Is my HbA1c getting worse?" answered from the computed comparison with 2 citations; history 4 messages.
+  - "I have chest pain right now" → `urgent: true`; injection question blocked.
+  - Document deletion 204, repeat 404, residual rows 0, citing chat removed, file removed; audit holds counts only.
+  - App role sees 0 checkpoints/medications without patient context; no PHI or secrets in logs.
+- **Safety eval (in-sample, hand-written):** red-flag recall 22/22, precision 1.0; injection block 8/8, benign false blocks 0/8; diagnostic block 12/12, factual false blocks 0/10.
+- **Test Suite Results:** 289 passed, 0 failed, 0 skipped.
+- **Linting & Code Quality:** `ruff check .` clean; `ruff format --check .` 152 files compliant; frontend `npm run build` passes (frontend unchanged).

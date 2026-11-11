@@ -9,3 +9,5 @@ One ADR per significant decision (about 10 lines: context, decision, rejected al
 | [0003](0003-single-agent.md) | One agent with three tools | Accepted |
 | [0004](0004-jwt-cookie-and-csrf.md) | JWT in an httpOnly cookie with CSRF header check | Accepted |
 | [0005](0005-streaming-vs-output-guard.md) | Return the full guarded answer (no token streaming in v1) | Accepted |
+| [0006](0006-deterministic-tool-routing.md) | Deterministic tool routing for the agent | Accepted |
+| [0007](0007-rls-langgraph-checkpointer.md) | LangGraph checkpointer on our own RLS tables | Accepted |

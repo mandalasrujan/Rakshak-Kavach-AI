@@ -19,9 +19,11 @@ from app.repositories.audit_repository import AuditRepository
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.lab_result_repository import LabResultRepository
+from app.repositories.medication_repository import MedicationRepository
 from app.services.consent_service import ConsentService
 from app.services.extraction import extract_pdf
 from app.services.lab_normalization import OK, load_dictionary, normalize_row, parse_document_dates
+from app.services.medication_extraction import extract_medications
 from app.services.pdf_validation import PdfRejectedError
 
 log = structlog.get_logger(__name__)
@@ -67,6 +69,13 @@ class DocumentProcessor:
             except LLMNotConfiguredError:
                 return await self._fail(session, document, "embedding_unavailable")
 
+            # Lock the row before writing: if the patient deleted the document meanwhile (M12),
+            # stop here so nothing derived from it is ever recreated.
+            if await DocumentRepository(session, patient_id).get_for_update(document.id) is None:
+                await session.rollback()
+                log.info("document.deleted_during_processing", document_id=str(document_id))
+                return "missing"
+
             # Chunks, embeddings and status commit together; a re-run replaces, never duplicates.
             rows = await ChunkRepository(session, patient_id).replace_for_document(
                 document.id,
@@ -95,7 +104,8 @@ class DocumentProcessor:
 
     @staticmethod
     async def _store_lab_results(session, document, rows, chunks) -> int:  # type: ignore[no-untyped-def]
-        """Deterministic M8 normalization of every lab row, with chunk provenance.
+        """Deterministic normalization of every lab row (M8) and prescription row (M10), with
+        chunk provenance.
 
         Rows that fail parsing, unit conversion or plausibility are stored with their status
         (never corrected) and logged by code and reason only. Returns the flagged count.
@@ -122,6 +132,12 @@ class DocumentProcessor:
             reported_on=dates.reported_on,
             date_ambiguous=dates.ambiguous,
             dictionary_version=dictionary.version,
+        )
+        medications = extract_medications(list(chunks))
+        await MedicationRepository(session, document.patient_id).replace_for_document(
+            document.id,
+            [(rows[m.chunk_index].id, m) for m in medications],
+            start_date=dates.collected_on or dates.reported_on,
         )
         return len(flagged)
 

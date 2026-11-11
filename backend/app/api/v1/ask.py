@@ -1,16 +1,16 @@
-"""Ask a question about your own records (baseline RAG with page citations)."""
+"""Ask a single question about your own records (Medical History Agent, no stored chat)."""
 
 from fastapi import APIRouter, Depends
 
+from app.agent.service import AgentService
 from app.api.deps import (
     enforce_same_site_request,
-    get_ask_service,
+    get_agent_service,
     get_current_patient,
     require_consent,
 )
 from app.core.errors import ErrorResponse
 from app.schemas.ask import AskRequest, AskResponse
-from app.services.rag_service import AskService
 
 router = APIRouter(
     prefix="/patient/ask",
@@ -35,5 +35,5 @@ router = APIRouter(
     ),
     dependencies=[Depends(require_consent)],
 )
-async def ask(body: AskRequest, service: AskService = Depends(get_ask_service)) -> AskResponse:
+async def ask(body: AskRequest, service: AgentService = Depends(get_agent_service)) -> AskResponse:
     return AskResponse.model_validate(await service.ask(body.question))
