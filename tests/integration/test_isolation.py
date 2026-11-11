@@ -14,7 +14,7 @@ from app.db.patient_context import set_patient_context
 from app.repositories.vector_store import PgVectorStore
 from app.services.document_processing import DocumentProcessor
 from tests.conftest import TEST_APP_ROLE
-from tests.helpers import grant_consent, register_and_login, upload
+from tests.helpers import grant_consent, log_content, register_and_login, upload
 
 pytestmark = pytest.mark.integration
 CBC = "01_asha_cbc_lft_2025-11-18.pdf"
@@ -223,6 +223,6 @@ async def test_processing_and_search_logs_are_phi_free(
             client, app, (synthetic_dir / CBC).read_bytes(), "logs.m6@example.com"
         )
         await _search(app, patient_id, patient_id, "hemoglobin")
-    dumped = repr(logs)
+    dumped = log_content(logs)
     for secret in ("Hemoglobin", "Asha", "12.4", "logs.m6@example.com"):
         assert secret not in dumped

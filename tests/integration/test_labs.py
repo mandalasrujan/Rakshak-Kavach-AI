@@ -12,7 +12,7 @@ from structlog.testing import capture_logs
 from app.db.patient_context import set_patient_context
 from app.services.document_processing import DocumentProcessor
 from scripts.generate_synthetic_pdfs import ASHA, LabRow, LabSection, Report, build_pdf
-from tests.helpers import grant_consent, register_and_login, upload
+from tests.helpers import grant_consent, log_content, register_and_login, upload
 
 pytestmark = pytest.mark.integration
 LABS = "/api/v1/patient/labs"
@@ -131,8 +131,9 @@ async def test_unusable_values_are_stored_flagged_and_logged_without_values(
         "unknown_unit",
     ]
     assert all(e["document_id"] == str(document_id) for e in flagged)
+    content = log_content(logs)
     for private in ("124", "Positive", "Ferritin", "furlongs"):
-        assert private not in repr(logs)
+        assert private not in content
 
 
 async def test_reprocessing_replaces_results(client: AsyncClient, app, synthetic_dir: Path) -> None:  # type: ignore[no-untyped-def]

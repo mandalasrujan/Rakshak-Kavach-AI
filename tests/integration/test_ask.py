@@ -12,7 +12,7 @@ from app.llm.base import LLMError
 from app.llm.fake import FakeLLMProvider
 from app.services.document_processing import DocumentProcessor
 from app.services.rag_service import NOT_FOUND_ANSWER
-from tests.helpers import CSRF, grant_consent, register_and_login, upload
+from tests.helpers import CSRF, grant_consent, log_content, register_and_login, upload
 
 pytestmark = pytest.mark.integration
 ASK = "/api/v1/patient/ask"
@@ -217,7 +217,7 @@ async def test_ask_logs_are_phi_free(client: AsyncClient, app, synthetic_dir: Pa
     await _patient_with_docs(client, app, synthetic_dir, "logs.ask@example.com", [CBC])
     with capture_logs(processors=[merge_contextvars]) as logs:
         body = (await _ask(client, "What was my secret hemoglobin value?")).json()
-    dumped = repr(logs)
+    dumped = log_content(logs)
     assert body["found"]
     for private in ("secret hemoglobin", "Hemoglobin", "12.4", body["answer"]):
         assert private not in dumped
