@@ -38,3 +38,7 @@ Thumbs.db
 
 # Generated synthetic test PDFs (regenerate with scripts/generate_synthetic_pdfs.py)
 data/synthetic/
+
+# Evaluation and load-test outputs (CI uploads them as artifacts)
+eval-results/
+load-results/
