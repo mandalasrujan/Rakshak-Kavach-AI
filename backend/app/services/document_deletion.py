@@ -26,6 +26,7 @@ from app.models.medication import Medication
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.share_repository import ShareRepository
 from app.repositories.snapshot_repository import SnapshotRepository
 
 log = structlog.get_logger(__name__)
@@ -74,6 +75,9 @@ class DocumentDeletionService:
             document_id
         )
         counts["snapshots_invalidated"] = len(invalidated)
+        counts["shares_revoked"] = await ShareRepository(
+            self._session, self._patient_id
+        ).revoke_active(snapshot_ids=invalidated)
         await self._session.delete(document)
         await AuditRepository(self._session).add(
             patient_id=self._patient_id,

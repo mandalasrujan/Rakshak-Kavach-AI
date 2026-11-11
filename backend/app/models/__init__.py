@@ -8,6 +8,7 @@ from app.models.document import Document
 from app.models.lab_result import LabResult
 from app.models.medication import Medication
 from app.models.patient import Patient
+from app.models.share import DoctorSession, ShareGrant
 from app.models.snapshot import SummarySnapshot
 
 __all__ = [
@@ -17,10 +18,12 @@ __all__ = [
     "ChatCheckpointWrite",
     "Chunk",
     "ConsentRecord",
+    "DoctorSession",
     "Document",
     "LabResult",
     "Medication",
     "MessageCitation",
     "Patient",
+    "ShareGrant",
     "SummarySnapshot",
 ]

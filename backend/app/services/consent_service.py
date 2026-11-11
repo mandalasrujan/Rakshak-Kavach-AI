@@ -12,6 +12,7 @@ from app.core import consent_notice
 from app.core.errors import ConsentNoticeOutdatedError, ConsentRequiredError
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.consent_repository import ConsentRepository
+from app.repositories.share_repository import ShareRepository
 
 log = structlog.get_logger(__name__)
 
@@ -78,18 +79,18 @@ class ConsentService:
         return await self.status()
 
     async def revoke(self) -> ConsentStatus:
-        """Revoke consent. Uploads and chat stop immediately; active shares are revoked here
-        once share grants exist (M14)."""
+        """Revoke consent: uploads and chat stop immediately and all active shares are revoked."""
         active = await self._consents.get_active()
         if active is None:
             return await self.status()  # idempotent
         await self._consents.revoke(active)
+        revoked_shares = await ShareRepository(self._session, self._patient_id).revoke_active()
         await self._audit.add(
             patient_id=self._patient_id,
             actor_type="patient",
             action="consent.revoked",
             target_id=active.id,
-            details={"notice_version": active.notice_version},
+            details={"notice_version": active.notice_version, "shares_revoked": revoked_shares},
         )
         await self._session.commit()
         log.info("consent.revoked", patient_id=str(self._patient_id))

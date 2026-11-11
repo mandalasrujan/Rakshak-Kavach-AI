@@ -7,6 +7,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ACCESS_COOKIE_NAME = "rk_access"
+SHARE_COOKIE_NAME = "rk_share"  # doctor session; path-scoped to /api/v1/share
 CSRF_HEADER_NAME = "X-CSRF-Protection"
 REQUEST_ID_HEADER = "X-Request-ID"
 _MIN_SECRET_LENGTH = 32
@@ -56,6 +57,12 @@ class Settings(LLMSettings):
     rag_top_k: int = Field(default=6, ge=1, le=20)
     rag_min_similarity: float = Field(default=0.2, ge=0, le=1)
     ask_max_per_hour: int = Field(default=60, ge=1)
+
+    share_max_expiry_minutes: int = Field(default=1440, ge=10, le=10080)
+    doctor_session_minutes: int = Field(default=30, ge=5, le=120)
+    share_pin_max_attempts: int = Field(default=5, ge=1, le=10)
+    share_exchange_max_per_ip: int = Field(default=20, ge=1)
+    share_exchange_window_seconds: int = Field(default=900, ge=1)
 
     storage_backend: Literal["local"] = "local"
     storage_local_path: str = "./storage"
