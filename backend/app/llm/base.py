@@ -17,6 +17,7 @@ class LLMNotConfiguredError(LLMError):
 
 
 class LLMProvider(Protocol):
+    chat_model: str
     embedding_model: str
     embedding_dimension: int
 

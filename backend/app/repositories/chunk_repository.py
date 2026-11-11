@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
@@ -51,3 +51,13 @@ class ChunkRepository:
         self._session.add_all(rows)
         await self._session.flush()
         return rows
+
+    async def texts(self, chunk_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+        if not chunk_ids:
+            return {}
+        result = await self._session.execute(
+            select(Chunk.id, Chunk.text).where(
+                Chunk.patient_id == self._patient_id, Chunk.id.in_(list(chunk_ids))
+            )
+        )
+        return {chunk_id: text for chunk_id, text in result}

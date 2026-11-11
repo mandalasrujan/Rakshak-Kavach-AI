@@ -6,7 +6,8 @@ Order matters for retry safety:
    so the request can simply be retried.
 3. In one transaction: delete chats that cited the document (their LangGraph checkpoints,
    pending writes and citations cascade), then the document itself (chunks with embeddings,
-   lab results and medications cascade), and append a PHI-free audit event.
+   lab results and medications cascade), invalidate summary snapshots built from it (content
+   purged), and append a PHI-free audit event.
 A worker still holding a job for this document finds no row (or waits on the lock) and
 writes nothing.
 """
@@ -25,6 +26,7 @@ from app.models.medication import Medication
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.snapshot_repository import SnapshotRepository
 
 log = structlog.get_logger(__name__)
 
@@ -68,6 +70,10 @@ class DocumentDeletionService:
         }
         chats = ChatRepository(self._session, self._patient_id)
         counts["chats"] = await chats.delete(await chats.chats_citing(document_id))
+        invalidated = await SnapshotRepository(self._session, self._patient_id).invalidate_citing(
+            document_id
+        )
+        counts["snapshots_invalidated"] = len(invalidated)
         await self._session.delete(document)
         await AuditRepository(self._session).add(
             patient_id=self._patient_id,

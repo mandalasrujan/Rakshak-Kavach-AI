@@ -26,7 +26,7 @@ class GeminiProvider:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.embedding_model = embedding_model
-        self._chat_model = chat_model
+        self.chat_model = chat_model
         self._client = httpx.AsyncClient(
             base_url=GEMINI_BASE_URL,
             headers={"x-goog-api-key": api_key},
@@ -83,7 +83,7 @@ class GeminiProvider:
 
     async def generate_json(self, *, system: str, prompt: str, schema: type[SchemaT]) -> SchemaT:
         data = await self._post(
-            f"models/{self._chat_model}:generateContent",
+            f"models/{self.chat_model}:generateContent",
             {
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],

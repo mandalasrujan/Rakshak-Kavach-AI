@@ -9,12 +9,11 @@ import re
 import uuid
 from typing import Literal, TypedDict
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.llm.base import LLMProvider
-from app.models.chunk import Chunk
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.repositories.vector_store import PgVectorStore
 from app.services.lab_comparison import COMPARISON_NOTE, LabComparison, LabPoint
@@ -127,12 +126,7 @@ class AgentTools:
         self._settings = settings
 
     async def _chunk_texts(self, chunk_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
-        result = await self._session.execute(
-            select(Chunk.id, Chunk.text).where(
-                Chunk.patient_id == self._patient_id, Chunk.id.in_(chunk_ids)
-            )
-        )
-        return {chunk_id: text for chunk_id, text in result}
+        return await ChunkRepository(self._session, self._patient_id).texts(chunk_ids)
 
     async def search_records(self, question: str) -> list[tuple[str, str, list[Source]]]:
         query = await self._llm.embed_query(question)

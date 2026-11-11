@@ -106,7 +106,8 @@ async def test_deletion_removes_the_document_and_everything_derived_from_it(
         ).scalar_one()
     assert citing not in chats and citing not in checkpoint_chats  # the citing chat is gone
     assert unrelated in chats and unrelated in checkpoint_chats  # other chats are kept
-    assert set(audit) == {"chunks", "lab_results", "medications", "chats"} and audit["chats"] == 1
+    assert set(audit) == {"chunks", "lab_results", "medications", "chats", "snapshots_invalidated"}
+    assert audit["chats"] == 1
     assert all(isinstance(v, int) for v in audit.values())
 
     # Nothing is reachable through the API, SQL-backed labs, or RAG.

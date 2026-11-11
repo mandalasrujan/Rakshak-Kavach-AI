@@ -17,6 +17,7 @@ from app.services.document_deletion import DocumentDeletionService
 from app.services.document_service import DocumentService
 from app.services.health_service import HealthService
 from app.services.lab_service import LabService
+from app.services.snapshot_service import SnapshotService
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -145,3 +146,12 @@ def get_document_deletion_service(
     session: AsyncSession = Depends(get_patient_session),
 ) -> DocumentDeletionService:
     return DocumentDeletionService(session, patient.id, storage=request.app.state.storage)
+
+
+def get_snapshot_service(
+    request: Request,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_patient_session),
+    settings: Settings = Depends(get_app_settings),
+) -> SnapshotService:
+    return SnapshotService(session, patient.id, llm=request.app.state.llm, settings=settings)
