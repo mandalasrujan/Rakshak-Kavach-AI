@@ -3,7 +3,15 @@
 
 name: rakshak-kavach-ai
 
+# Owner role: migrations only (it owns the tables, so RLS does not apply to it).
 x-database-url: &database-url "postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}"
+# Non-owner application role (member of rakshak_app): API and worker, subject to RLS.
+x-app-database-url: &app-database-url "postgresql+asyncpg://${APP_DB_USER:?set APP_DB_USER in .env}:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB}"
+x-llm-env: &llm-env
+  LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-}
+  GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
 
 services:
   postgres:
@@ -41,10 +49,12 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    # Migrate as the owner, then create/update the non-owner login role used by api/worker.
+    command: ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && python -m app.db.app_role"]
     environment:
-      # Until M6 introduces the non-owner app role, migrations and the app use the same role.
       MIGRATION_DATABASE_URL: *database-url
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
@@ -58,8 +68,9 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: *database-url
+      DATABASE_URL: *app-database-url
       REDIS_URL: redis://redis:6379/0
+      <<: *llm-env
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
@@ -88,7 +99,8 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: *database-url
+      DATABASE_URL: *app-database-url
+      <<: *llm-env
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /data/storage
       MAX_PDF_PAGES: ${MAX_PDF_PAGES:-50}

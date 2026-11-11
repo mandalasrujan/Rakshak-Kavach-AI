@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from arq.connections import ArqRedis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,8 +18,11 @@ from app.core.request_context import RequestContextMiddleware
 from app.core.security import PasswordService, TokenService
 from app.core.storage import create_storage
 from app.db.session import create_engine, create_sessionmaker
+from app.llm.base import LLMNotConfiguredError
+from app.llm.factory import create_llm_provider
 
 API_PREFIX = "/api/v1"
+log = structlog.get_logger(__name__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -42,8 +46,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.storage = create_storage(settings.storage_backend, settings.storage_local_path)
         try:
+            app.state.llm = create_llm_provider(settings)
+        except LLMNotConfiguredError:
+            app.state.llm = None  # /ask answers 503 until the provider is configured
+            log.warning("llm.not_configured", provider=settings.llm_provider)
+        try:
             yield
         finally:
+            if app.state.llm is not None:
+                await app.state.llm.aclose()
             await app.state.arq.aclose()
             await app.state.redis.aclose()
             await engine.dispose()

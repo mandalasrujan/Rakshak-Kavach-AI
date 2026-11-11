@@ -68,7 +68,8 @@ jobs:
           cp .env.example .env
           pg_pw="$(openssl rand -hex 24)"
           jwt="$(openssl rand -hex 48)"
-          sed -i "s/change-me-postgres-password/${pg_pw}/g; s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=${jwt}/" .env
+          app_pw="$(openssl rand -hex 24)"
+          sed -i "s/change-me-postgres-password/${pg_pw}/g; s/change-me-app-db-password/${app_pw}/g; s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=${jwt}/; s/^LLM_PROVIDER=.*/LLM_PROVIDER=fake/" .env
       - run: docker compose config --quiet
       - run: docker compose up --build --detach --wait --wait-timeout 240
       - name: Smoke test health and auth

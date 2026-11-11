@@ -1,4 +1,4 @@
-"""Worker-side document pipeline: consent check → validate → extract chunks → ready/failed.
+"""Worker-side document pipeline: consent check → validate → extract → embed → ready/failed.
 
 Idempotent: terminal documents are skipped, and a document left in `processing` by a crashed
 attempt is processed again from scratch.
@@ -11,6 +11,8 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.storage import ObjectStorage
+from app.db.patient_context import set_patient_context
+from app.llm.base import LLMNotConfiguredError, LLMProvider
 from app.models.chunk import LAB_ROW
 from app.models.document import FAILED, PROCESSING, READY, Document
 from app.repositories.audit_repository import AuditRepository
@@ -29,14 +31,17 @@ class DocumentProcessor:
         sessionmaker: async_sessionmaker[AsyncSession],
         storage: ObjectStorage,
         *,
+        llm: LLMProvider | None,
         max_pages: int,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._storage = storage
+        self._llm = llm
         self._max_pages = max_pages
 
     async def process(self, document_id: uuid.UUID, patient_id: uuid.UUID) -> str:
         async with self._sessionmaker() as session:
+            await set_patient_context(session, patient_id)  # RLS: this job's patient only
             document = await DocumentRepository(session, patient_id).get(document_id)
             if document is None:
                 log.warning("document.missing", document_id=str(document_id))
@@ -53,10 +58,19 @@ class DocumentProcessor:
                 result = await asyncio.to_thread(extract_pdf, data, max_pages=self._max_pages)
             except PdfRejectedError as exc:
                 return await self._fail(session, document, exc.reason)
+            if self._llm is None:
+                return await self._fail(session, document, "embedding_unavailable")
+            try:
+                embeddings = await self._llm.embed_documents([c.text for c in result.chunks])
+            except LLMNotConfiguredError:
+                return await self._fail(session, document, "embedding_unavailable")
 
-            # Chunks and status change commit together; a re-run replaces, never duplicates.
+            # Chunks, embeddings and status commit together; a re-run replaces, never duplicates.
             await ChunkRepository(session, patient_id).replace_for_document(
-                document.id, result.chunks
+                document.id,
+                result.chunks,
+                embeddings=embeddings,
+                embedding_model=self._llm.embedding_model,
             )
             lab_rows = sum(1 for chunk in result.chunks if chunk.kind == LAB_ROW)
             document.pages = result.pages
@@ -77,6 +91,7 @@ class DocumentProcessor:
 
     async def mark_failed(self, document_id: uuid.UUID, patient_id: uuid.UUID, reason: str) -> None:
         async with self._sessionmaker() as session:
+            await set_patient_context(session, patient_id)
             document = await DocumentRepository(session, patient_id).get(document_id)
             if document is not None and document.status not in (READY, FAILED):
                 await self._fail(session, document, reason)

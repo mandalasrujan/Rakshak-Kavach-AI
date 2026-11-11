@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ACCESS_COOKIE_NAME, CSRF_HEADER_NAME, Settings
 from app.core.errors import CsrfRejectedError
+from app.db.patient_context import set_patient_context
 from app.models.patient import Patient
 from app.services.auth_service import AuthService
 from app.services.consent_service import ConsentService
@@ -76,9 +77,18 @@ async def get_current_patient(
     return await auth_service.authenticate(request.cookies.get(ACCESS_COOKIE_NAME))
 
 
-def get_consent_service(
+async def get_patient_session(
     patient: Patient = Depends(get_current_patient),
     session: AsyncSession = Depends(get_db_session),
+) -> AsyncSession:
+    """The request session bound to the authenticated patient (RLS context set)."""
+    await set_patient_context(session, patient.id)
+    return session
+
+
+def get_consent_service(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_patient_session),
 ) -> ConsentService:
     return ConsentService(session, patient.id)
 
@@ -95,7 +105,7 @@ async def require_consent(
 def get_document_service(
     request: Request,
     patient: Patient = Depends(get_current_patient),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_patient_session),
 ) -> DocumentService:
     return DocumentService(
         session, patient.id, storage=request.app.state.storage, queue=request.app.state.arq

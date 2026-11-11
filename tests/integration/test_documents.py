@@ -51,7 +51,7 @@ async def test_upload_stores_file_queues_job_and_audits(
     assert body["status"] == "queued"
     assert set(body) == {"id", "status", "failure_reason", "pages", "uploaded_at"}
 
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         row = (
             await conn.execute(
                 text("SELECT patient_id, storage_key, file_hash FROM documents WHERE id = :i"),
@@ -91,14 +91,15 @@ async def test_non_pdf_content_is_rejected_by_magic_bytes(
     assert not list(Path(settings.storage_local_path).rglob("*.pdf"))
 
 
-async def test_oversized_upload_is_rejected(settings_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_oversized_upload_is_rejected(settings_factory, admin_engine) -> None:  # type: ignore[no-untyped-def]
     from httpx import ASGITransport
 
     from app.main import create_app
 
     app = create_app(settings_factory(max_upload_mb=1))
+    app.state.admin_engine = admin_engine
     async with app.router.lifespan_context(app):
-        async with app.state.engine.begin() as conn:
+        async with app.state.admin_engine.begin() as conn:
             await conn.execute(text("TRUNCATE TABLE patients, audit_log CASCADE"))
         await app.state.redis.flushdb()
         transport = ASGITransport(app=app)
@@ -191,7 +192,9 @@ async def test_upload_goes_queued_to_ready_through_the_worker(
     document = (await upload(client, (synthetic_dir / CBC).read_bytes())).json()
     assert document["status"] == "queued"
 
-    processor = DocumentProcessor(app.state.sessionmaker, app.state.storage, max_pages=50)
+    processor = DocumentProcessor(
+        app.state.sessionmaker, app.state.storage, llm=app.state.llm, max_pages=50
+    )
     worker = Worker(
         functions=[process_document],
         redis_settings=None,
@@ -205,7 +208,7 @@ async def test_upload_goes_queued_to_ready_through_the_worker(
 
     ready = (await client.get(f"{DOCS}/{document['id']}")).json()
     assert (ready["status"], ready["pages"], ready["failure_reason"]) == ("ready", 2, None)
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         actions = (
             await conn.execute(
                 text(
