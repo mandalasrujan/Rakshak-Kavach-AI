@@ -16,7 +16,7 @@ async def test_request_creates_row_through_every_layer(client: AsyncClient, app)
     assert set(body) == {"id", "email", "created_at"}
     assert body["email"] == "layer.chain@example.com"
 
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         row = (
             await conn.execute(
                 text("SELECT id, email, password_hash FROM patients WHERE email = :e"),

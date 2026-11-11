@@ -19,13 +19,16 @@ from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
-from sqlalchemy import text
+from sqlalchemy import make_url, text
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.core.config import Settings
+from app.db.app_role import ensure_app_login_role
 from app.main import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_JWT_SECRET = "test-only-jwt-secret-not-used-anywhere-else-0123456789"
+TEST_APP_ROLE = "rakshak_test_app"
 FRONTEND_ORIGIN = "https://app.example.com"
 
 
@@ -78,8 +81,30 @@ def redis_url() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def migrated_database_url(database_url: str) -> str:
+    """Owner URL (migrations, test assertions). The owner bypasses RLS; the app never uses it."""
     command.upgrade(alembic_config(database_url), "head")
     return database_url
+
+
+@pytest.fixture(scope="session")
+def app_database_url(migrated_database_url: str) -> str:
+    """URL of a non-owner LOGIN role in `rakshak_app`, exactly as production connects."""
+    import asyncio
+    import secrets
+
+    password = secrets.token_urlsafe(24)
+    asyncio.run(ensure_app_login_role(migrated_database_url, TEST_APP_ROLE, password))
+    url = make_url(migrated_database_url).set(username=TEST_APP_ROLE, password=password)
+    return url.render_as_string(hide_password=False)
+
+
+@pytest.fixture
+async def admin_engine(migrated_database_url: str) -> AsyncIterator[AsyncEngine]:
+    engine = create_async_engine(migrated_database_url)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -94,10 +119,11 @@ def make_settings(**overrides: object) -> Settings:
 
 
 @pytest.fixture
-def settings_factory(migrated_database_url: str, redis_url: str, tmp_path: Path):  # type: ignore[no-untyped-def]
+def settings_factory(app_database_url: str, redis_url: str, tmp_path: Path):  # type: ignore[no-untyped-def]
     def factory(**overrides: object) -> Settings:
         values = {
-            "database_url": migrated_database_url,
+            "database_url": app_database_url,
+            "llm_provider": "fake",
             "redis_url": redis_url,
             "storage_local_path": str(tmp_path / "storage"),
             **overrides,
@@ -112,17 +138,19 @@ def settings(settings_factory) -> Settings:  # type: ignore[no-untyped-def]
     return settings_factory()
 
 
-async def _reset_state(app) -> None:  # type: ignore[no-untyped-def]
-    async with app.state.engine.begin() as conn:
+async def reset_state(app) -> None:  # type: ignore[no-untyped-def]
+    """Truncate via the owner engine (the app role has no TRUNCATE privilege)."""
+    async with app.state.admin_engine.begin() as conn:
         await conn.execute(text("TRUNCATE TABLE patients, audit_log CASCADE"))
     await app.state.redis.flushdb()
 
 
 @pytest.fixture
-async def app(settings: Settings):  # type: ignore[no-untyped-def]
+async def app(settings: Settings, admin_engine: AsyncEngine):  # type: ignore[no-untyped-def]
     application = create_app(settings)
+    application.state.admin_engine = admin_engine  # test-only handle for assertions
     async with application.router.lifespan_context(application):
-        await _reset_state(application)
+        await reset_state(application)
         yield application
 
 

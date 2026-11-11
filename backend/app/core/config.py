@@ -10,11 +10,35 @@ ACCESS_COOKIE_NAME = "rk_access"
 CSRF_HEADER_NAME = "X-CSRF-Protection"
 REQUEST_ID_HEADER = "X-Request-ID"
 _MIN_SECRET_LENGTH = 32
+# Fixed by the `chunks.embedding vector(768)` column; changing it needs a migration.
+EMBEDDING_DIMENSION = 768
 
 
-class Settings(BaseSettings):
+class LLMSettings(BaseSettings):
+    """Provider settings shared by the API and the worker (configuration stays centralized)."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    llm_provider: Literal["gemini", "fake"] = "gemini"
+    gemini_api_key: SecretStr | None = None
+    gemini_chat_model: str | None = None
+    gemini_embedding_model: str | None = None
+    llm_timeout_seconds: float = Field(default=30, gt=0, le=300)
+
+    @field_validator("gemini_api_key", "gemini_chat_model", "gemini_embedding_model", mode="before")
+    @classmethod
+    def _placeholders_are_unset(cls, value: object) -> object:
+        if isinstance(value, str) and (not value.strip() or value.strip().startswith("<")):
+            return None  # .env.example placeholders count as "not configured"
+        return value
+
+
+def reject_fake_llm_in_production(app_env: str, llm_provider: str) -> None:
+    if app_env == "production" and llm_provider == "fake":
+        raise ValueError("LLM_PROVIDER=fake is for offline development and tests only")
+
+
+class Settings(LLMSettings):
     app_env: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
@@ -28,6 +52,10 @@ class Settings(BaseSettings):
     # DEVELOPMENT ONLY when false; rejected in production (see validator below).
     cookie_secure: bool = True
     frontend_origin: str = "http://localhost:5173"
+
+    rag_top_k: int = Field(default=6, ge=1, le=20)
+    rag_min_similarity: float = Field(default=0.2, ge=0, le=1)
+    ask_max_per_hour: int = Field(default=60, ge=1)
 
     storage_backend: Literal["local"] = "local"
     storage_local_path: str = "./storage"
@@ -66,6 +94,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _production_guards(self) -> "Settings":
+        reject_fake_llm_in_production(self.app_env, self.llm_provider)
         if self.app_env == "production":
             if not self.cookie_secure:
                 raise ValueError("COOKIE_SECURE=false is development-only")

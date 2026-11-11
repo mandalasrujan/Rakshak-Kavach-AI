@@ -1,4 +1,4 @@
-"""Worker-side document pipeline: consent check → validate → extract chunks → ready/failed.
+"""Worker-side document pipeline: consent check → validate → extract → embed → ready/failed.
 
 Idempotent: terminal documents are skipped, and a document left in `processing` by a crashed
 attempt is processed again from scratch.
@@ -11,13 +11,17 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.storage import ObjectStorage
-from app.models.chunk import LAB_ROW
+from app.db.patient_context import set_patient_context
+from app.llm.base import LLMNotConfiguredError, LLMProvider
+from app.models.chunk import LAB_ROW, NARRATIVE
 from app.models.document import FAILED, PROCESSING, READY, Document
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.lab_result_repository import LabResultRepository
 from app.services.consent_service import ConsentService
 from app.services.extraction import extract_pdf
+from app.services.lab_normalization import OK, load_dictionary, normalize_row, parse_document_dates
 from app.services.pdf_validation import PdfRejectedError
 
 log = structlog.get_logger(__name__)
@@ -29,14 +33,17 @@ class DocumentProcessor:
         sessionmaker: async_sessionmaker[AsyncSession],
         storage: ObjectStorage,
         *,
+        llm: LLMProvider | None,
         max_pages: int,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._storage = storage
+        self._llm = llm
         self._max_pages = max_pages
 
     async def process(self, document_id: uuid.UUID, patient_id: uuid.UUID) -> str:
         async with self._sessionmaker() as session:
+            await set_patient_context(session, patient_id)  # RLS: this job's patient only
             document = await DocumentRepository(session, patient_id).get(document_id)
             if document is None:
                 log.warning("document.missing", document_id=str(document_id))
@@ -53,11 +60,21 @@ class DocumentProcessor:
                 result = await asyncio.to_thread(extract_pdf, data, max_pages=self._max_pages)
             except PdfRejectedError as exc:
                 return await self._fail(session, document, exc.reason)
+            if self._llm is None:
+                return await self._fail(session, document, "embedding_unavailable")
+            try:
+                embeddings = await self._llm.embed_documents([c.text for c in result.chunks])
+            except LLMNotConfiguredError:
+                return await self._fail(session, document, "embedding_unavailable")
 
-            # Chunks and status change commit together; a re-run replaces, never duplicates.
-            await ChunkRepository(session, patient_id).replace_for_document(
-                document.id, result.chunks
+            # Chunks, embeddings and status commit together; a re-run replaces, never duplicates.
+            rows = await ChunkRepository(session, patient_id).replace_for_document(
+                document.id,
+                result.chunks,
+                embeddings=embeddings,
+                embedding_model=self._llm.embedding_model,
             )
+            rejected = await self._store_lab_results(session, document, rows, result.chunks)
             lab_rows = sum(1 for chunk in result.chunks if chunk.kind == LAB_ROW)
             document.pages = result.pages
             document.status, document.failure_reason = READY, None
@@ -69,14 +86,48 @@ class DocumentProcessor:
                     "pages": result.pages,
                     "lab_rows": lab_rows,
                     "narrative_chunks": len(result.chunks) - lab_rows,
+                    "lab_results_flagged": rejected,
                 },
             )
             await session.commit()
             log.info("document.ready", document_id=str(document.id), patient_id=str(patient_id))
             return READY
 
+    @staticmethod
+    async def _store_lab_results(session, document, rows, chunks) -> int:  # type: ignore[no-untyped-def]
+        """Deterministic M8 normalization of every lab row, with chunk provenance.
+
+        Rows that fail parsing, unit conversion or plausibility are stored with their status
+        (never corrected) and logged by code and reason only. Returns the flagged count.
+        """
+        dictionary = load_dictionary()
+        dates = parse_document_dates([c.text for c in chunks if c.kind == NARRATIVE])
+        labs = [
+            (row.id, normalize_row(chunk.cells, chunk.page, dictionary))
+            for row, chunk in zip(rows, chunks, strict=True)
+            if chunk.kind == LAB_ROW
+        ]
+        flagged = [lab for _, lab in labs if lab.validation_status != OK]
+        for lab in flagged:
+            log.info(
+                "lab.value_flagged",
+                document_id=str(document.id),
+                test_code=lab.test_code,
+                reason=lab.validation_status,
+            )
+        await LabResultRepository(session, document.patient_id).replace_for_document(
+            document.id,
+            labs,
+            collected_on=dates.collected_on,
+            reported_on=dates.reported_on,
+            date_ambiguous=dates.ambiguous,
+            dictionary_version=dictionary.version,
+        )
+        return len(flagged)
+
     async def mark_failed(self, document_id: uuid.UUID, patient_id: uuid.UUID, reason: str) -> None:
         async with self._sessionmaker() as session:
+            await set_patient_context(session, patient_id)
             document = await DocumentRepository(session, patient_id).get(document_id)
             if document is not None and document.status not in (READY, FAILED):
                 await self._fail(session, document, reason)

@@ -154,3 +154,9 @@ def internal_error_body() -> dict[str, Any]:
         code="internal_error", message="Internal server error.", request_id=get_request_id()
     )
     return ErrorResponse(error=body).model_dump(exclude_none=True)
+
+
+class LLMUnavailableError(AppError):
+    status_code = 503
+    code = "llm_unavailable"
+    message = "The answer service is temporarily unavailable."
