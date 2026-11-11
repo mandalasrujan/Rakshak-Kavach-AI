@@ -50,7 +50,15 @@ def test_graph_has_the_expected_nodes(app) -> None:  # type: ignore[no-untyped-d
     graph = build_agent_graph(
         session=None, patient_id=uuid.uuid4(), llm=FakeLLMProvider(), settings=app.state.settings
     )  # type: ignore[arg-type]
-    assert {"consent", "tools", "answer", "finalize"} <= set(graph.get_graph().nodes)
+    assert {
+        "consent",
+        "red_flags",
+        "input_guard",
+        "tools",
+        "answer",
+        "output_guard",
+        "finalize",
+    } <= set(graph.get_graph().nodes)
 
 
 async def test_trend_question_uses_computed_comparison_with_both_sources(

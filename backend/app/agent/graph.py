@@ -1,10 +1,12 @@
 """The Medical History Agent as an explicit LangGraph state machine.
 
-    START → consent → tools → answer → finalize → END
-                 ↘ (no consent)  ↘ (no evidence) ↗
+    START → consent → red_flags → input_guard → tools → answer → output_guard → finalize → END
+    (no consent / urgent / blocked input / no evidence jump straight to finalize)
 
 The LLM is used in exactly one node (`answer`), to phrase an answer from evidence that
-deterministic, patient-scoped tools produced. Grounding is enforced in code afterwards.
+deterministic, patient-scoped tools produced. Everything around it is deterministic: an urgent
+red flag ends the turn before any retrieval or LLM call, and the output guard can only replace
+an answer with a fixed safe message, never the other way round.
 """
 
 import operator
@@ -24,6 +26,14 @@ from app.llm.base import LLMProvider
 from app.repositories.chat_repository import ChatRepository
 from app.services.consent_service import ConsentService
 from app.services.rag_service import NOT_FOUND_ANSWER, RagAnswer
+from app.services.safety import (
+    INPUT_BLOCKED_ANSWER,
+    OUTPUT_BLOCKED_ANSWER,
+    check_input,
+    check_output,
+    clean_question,
+    detect_red_flag,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -51,6 +61,7 @@ class AgentState(TypedDict, total=False):
     messages: Annotated[list[dict[str, str]], operator.add]  # persisted conversation
     question: str
     outcome: str
+    red_flag: str | None  # rule id
     evidence: list[Evidence]
     response: dict[str, Any]
 
@@ -93,6 +104,10 @@ def not_found() -> dict[str, Any]:
     return {"found": False, "answer": NOT_FOUND_ANSWER, "citations": [], "urgent": False}
 
 
+def fixed(answer: str, *, urgent: bool = False) -> dict[str, Any]:
+    return {"found": False, "answer": answer, "citations": [], "urgent": urgent}
+
+
 def _timed(name: str, node: Callable[[AgentState], Awaitable[dict[str, Any]]]):  # type: ignore[no-untyped-def]
     async def run(state: AgentState) -> dict[str, Any]:
         started = time.perf_counter()
@@ -124,6 +139,38 @@ def build_agent_graph(
             return {"outcome": "consented"}
         return {"outcome": "no_consent", "response": not_found()}
 
+    async def red_flags(state: AgentState) -> dict[str, Any]:
+        flag = detect_red_flag(state["question"])  # the patient's own words only
+        if flag is None:
+            return {"outcome": "no_red_flag"}
+        log.warning("safety.red_flag", rule=flag.rule_id, category=flag.category)
+        return {
+            "outcome": "urgent",
+            "red_flag": flag.rule_id,
+            "response": fixed(flag.message, urgent=True),
+        }
+
+    async def input_guard(state: AgentState) -> dict[str, Any]:
+        question = clean_question(state["question"])
+        if (violation := check_input(question)) is not None:
+            log.warning("safety.input_blocked", rule=violation)
+            return {"outcome": "input_blocked", "response": fixed(INPUT_BLOCKED_ANSWER)}
+        return {"outcome": "input_ok", "question": question}
+
+    async def output_guard(state: AgentState) -> dict[str, Any]:
+        response = state["response"]
+        if state.get("red_flag"):  # defence in depth: urgent always wins
+            return {"outcome": "urgent"}
+        if not response["found"]:
+            return {"outcome": "answered"}
+        violation = check_output(
+            response["answer"], [e["text"] for e in state["evidence"]], state["question"]
+        )
+        if violation is None:
+            return {"outcome": "answered"}
+        log.warning("safety.output_blocked", rule=violation)
+        return {"outcome": "output_blocked", "response": fixed(OUTPUT_BLOCKED_ANSWER)}
+
     async def run_tools(state: AgentState) -> dict[str, Any]:
         calls = route(state["question"])
         evidence = await tools.run(calls, state["question"])
@@ -152,22 +199,31 @@ def build_agent_graph(
         }
 
     graph = StateGraph(AgentState)
-    graph.add_node("consent", _timed("consent", consent))
-    graph.add_node("tools", _timed("tools", run_tools))
-    graph.add_node("answer", _timed("answer", answer))
-    graph.add_node("finalize", _timed("finalize", finalize))
+    for name, node in (
+        ("consent", consent),
+        ("red_flags", red_flags),
+        ("input_guard", input_guard),
+        ("tools", run_tools),
+        ("answer", answer),
+        ("output_guard", output_guard),
+        ("finalize", finalize),
+    ):
+        graph.add_node(name, _timed(name, node))
+
+    def next_if(expected: str, target: str):  # type: ignore[no-untyped-def]
+        return lambda s: target if s["outcome"] == expected else "finalize"
+
     graph.add_edge(START, "consent")
-    graph.add_conditional_edges(
-        "consent", lambda s: "tools" if s["outcome"] == "consented" else "finalize"
-    )
-    graph.add_conditional_edges(
-        "tools", lambda s: "answer" if s["outcome"] == "retrieved" else "finalize"
-    )
-    graph.add_edge("answer", "finalize")
+    graph.add_conditional_edges("consent", next_if("consented", "red_flags"))
+    graph.add_conditional_edges("red_flags", next_if("no_red_flag", "input_guard"))
+    graph.add_conditional_edges("input_guard", next_if("input_ok", "tools"))
+    graph.add_conditional_edges("tools", next_if("retrieved", "answer"))
+    graph.add_edge("answer", "output_guard")
+    graph.add_edge("output_guard", "finalize")
     graph.add_edge("finalize", END)
     return graph.compile(checkpointer=checkpointer)
 
 
 def turn_input(question: str) -> dict[str, Any]:
     """Reset every per-turn channel; only `messages` carries over between turns."""
-    return {"question": question, "outcome": "", "evidence": [], "response": {}}
+    return {"question": question, "outcome": "", "red_flag": None, "evidence": [], "response": {}}

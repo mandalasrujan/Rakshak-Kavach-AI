@@ -1,0 +1,50 @@
+# Deterministic safety rules (M11). Versioned: bump `version` on any change.
+# Red flags are based on commonly documented warning signs; they are NOT clinically
+# validated and need clinician review before real use (PROJECT_SPEC.md wording rules).
+version: "2026-11-11"
+
+# Red-flag matching runs on the patient's own message only (never on document text).
+negation_window: 5          # tokens scanned before a phrase for a negator
+negators: ["no", "not", "never", "denies", "deny", "denied", "without", "none", "negative", "don't", "dont", "didn't", "didnt", "doesn't", "doesnt", "isn't", "isnt", "haven't", "havent", "hasn't", "hasnt", "wasn't", "wasnt"]  # quoted: YAML 1.1 reads bare `no` as false
+clause_breakers: ["but", "however", "although", "though", "yet", "except", "and", "now", "today"]  # also , ; . ! ?
+history_before: ["history of", "in the past", previously, "past history", "years back"]
+history_after: ["years ago", "year ago", "months ago", "month ago", "last year", "last month", "years back", "in the past"]  # not bare "ago": "an hour ago" is recent
+
+messages:
+  urgent: >-
+    Your message mentions symptoms that can need urgent medical care. Please call 112 (or 108
+    for an ambulance) now, or go to the nearest emergency department. This assistant cannot
+    assess symptoms, so please don't wait for an answer here.
+  crisis: >-
+    It sounds like you may be going through something very hard, and you don't have to face it
+    alone. Please call Tele-MANAS on 14416 (free, 24x7) or 112 in an emergency, and reach out to
+    someone you trust right now.
+
+red_flags:
+  - {id: chest_pain, category: urgent, phrases: ["chest pain", "chest tightness", "tight chest", "pain in my chest", "pressure in my chest", "chest pressure", "crushing chest"]}
+  - {id: breathing, category: urgent, phrases: ["shortness of breath", "short of breath", "can't breathe", "cant breathe", "cannot breathe", "difficulty breathing", "trouble breathing", "struggling to breathe", "breathless"]}
+  - {id: stroke_signs, category: urgent, phrases: ["face drooping", "facial droop", "slurred speech", "sudden weakness", "sudden numbness", "one side of my body", "worst headache of my life", "sudden confusion", "face is drooping", "speech is slurred"]}
+  - {id: unconscious, category: urgent, phrases: ["fainted", "passed out", "unconscious", "lost consciousness", "unresponsive"]}
+  - {id: seizure, category: urgent, phrases: ["seizure", "seizures", "convulsion", "convulsions", "having a fit"]}
+  - {id: bleeding, category: urgent, phrases: ["vomiting blood", "coughing up blood", "blood in my vomit", "black stools", "severe bleeding", "heavy bleeding", "bleeding won't stop", "bleeding that won't stop", "stools are black"]}
+  - {id: anaphylaxis, category: urgent, phrases: ["throat swelling", "swollen throat", "swollen tongue", "tongue swelling", "throat is closing", "can't swallow", "severe allergic reaction", "anaphylaxis", "tongue is swelling", "throat is swelling"]}
+  # Crisis rules ignore negation on purpose: offering support to a false positive is safer.
+  - {id: self_harm, category: crisis, phrases: ["kill myself", "suicide", "suicidal", "end my life", "want to die", "self harm", "self-harm", "hurt myself", "harm myself"], ignore_negation: true}
+
+# Prompt-injection / role-change attempts in the patient's question (regex, case-insensitive).
+input_injection:
+  - {id: ignore_instructions, pattern: "\\b(ignore|disregard|forget|override)\\b.{0,30}\\b(instructions?|rules|prompts?|guidelines)\\b"}
+  - {id: reveal_prompt, pattern: "\\b(system prompt|hidden prompt|your instructions|developer mode|jailbreak)\\b"}
+  - {id: role_change, pattern: "\\b(you are now|act as|pretend (to be|you are)|roleplay as)\\b"}
+  - {id: tag_injection, pattern: "</?\\s*(evidence|question|history|turn|system)\\b"}
+
+# No-diagnosis / no-treatment / no-prediction output guard (regex, case-insensitive).
+diagnostic_output:
+  - {id: speculative_condition, pattern: "\\byou (likely|probably|may|might|could|definitely|clearly) (have|be suffering from|be developing|develop)\\b"}
+  - {id: asserted_condition, pattern: "\\byou (have|are suffering from|suffer from|have been diagnosed with|are diagnosed with) (an? )?(\\w+ ){0,2}(disease|disorder|syndrome|infection|deficiency|failure|cancer|tumou?r|diabetes|prediabetes|pre-diabetes|anaemia|anemia|hypertension|hypothyroidism|hyperthyroidism|hepatitis|cirrhosis|nephropathy|neuropathy)\\b"}
+  - {id: interpretation_as_diagnosis, pattern: "\\b(this|these|which|that|it) (results? )?(indicates?|suggests?|means|confirms?|proves?) (that )?you (have|are|may)\\b"}
+  - {id: stated_diagnosis, pattern: "\\b(your|the|a) diagnosis (is|of)\\b|\\bdiagnosed with\\b"}
+  - {id: treatment_advice, pattern: "\\byou should (take|start|stop|increase|decrease|reduce|double|skip|change|switch)\\b"}
+  - {id: dose_change, pattern: "\\b(increase|decrease|reduce|stop|start|double|skip|change) (your |the )?(dose|dosage|medication|medicine|insulin|tablets?)\\b"}
+  - {id: recommendation, pattern: "\\b(i )?(recommend|prescribe) (taking|that you|you|starting|stopping)\\b"}
+  - {id: prediction, pattern: "\\byou (will|are going to|are likely to) (develop|get|need|have)\\b|\\brisk of developing\\b"}
