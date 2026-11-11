@@ -21,6 +21,16 @@ class DocumentRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_for_update(self, document_id: uuid.UUID) -> Document | None:
+        """Row-locked read that always hits the database (serialises processing vs deletion)."""
+        result = await self._session.execute(
+            select(Document)
+            .where(Document.id == document_id, Document.patient_id == self._patient_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_hash(self, file_hash: str) -> Document | None:
         result = await self._session.execute(
             select(Document).where(

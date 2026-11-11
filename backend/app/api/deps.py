@@ -13,6 +13,7 @@ from app.db.patient_context import set_patient_context
 from app.models.patient import Patient
 from app.services.auth_service import AuthService
 from app.services.consent_service import ConsentService
+from app.services.document_deletion import DocumentDeletionService
 from app.services.document_service import DocumentService
 from app.services.health_service import HealthService
 from app.services.lab_service import LabService
@@ -136,3 +137,11 @@ def get_lab_service(
     session: AsyncSession = Depends(get_patient_session),
 ) -> LabService:
     return LabService(session, patient.id)
+
+
+def get_document_deletion_service(
+    request: Request,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_patient_session),
+) -> DocumentDeletionService:
+    return DocumentDeletionService(session, patient.id, storage=request.app.state.storage)

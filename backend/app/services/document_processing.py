@@ -69,6 +69,13 @@ class DocumentProcessor:
             except LLMNotConfiguredError:
                 return await self._fail(session, document, "embedding_unavailable")
 
+            # Lock the row before writing: if the patient deleted the document meanwhile (M12),
+            # stop here so nothing derived from it is ever recreated.
+            if await DocumentRepository(session, patient_id).get_for_update(document.id) is None:
+                await session.rollback()
+                log.info("document.deleted_during_processing", document_id=str(document_id))
+                return "missing"
+
             # Chunks, embeddings and status commit together; a re-run replaces, never duplicates.
             rows = await ChunkRepository(session, patient_id).replace_for_document(
                 document.id,
