@@ -11,3 +11,6 @@ One ADR per significant decision (about 10 lines: context, decision, rejected al
 | [0005](0005-streaming-vs-output-guard.md) | Return the full guarded answer (no token streaming in v1) | Accepted |
 | [0006](0006-deterministic-tool-routing.md) | Deterministic tool routing for the agent | Accepted |
 | [0007](0007-rls-langgraph-checkpointer.md) | LangGraph checkpointer on our own RLS tables | Accepted |
+| [0008](0008-doctor-share-access.md) | Doctor share access via hashed token + PIN and an RLS owner lookup | Accepted |
+| [0009](0009-versioned-snapshots.md) | Versioned, approve-once summary snapshots built from SQL | Accepted |
+| [0010](0010-same-origin-frontend.md) | Serve the frontend and API on one origin through nginx | Accepted |
