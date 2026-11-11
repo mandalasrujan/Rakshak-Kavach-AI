@@ -1,27 +1,21 @@
-"""Baseline RAG (M7): embed question → patient-scoped vector search → grounded JSON answer.
+"""Baseline RAG building blocks (M7), kept as the plain-RAG baseline for evals.
+
+The /ask orchestration now runs through the LangGraph agent (app/agent); these prompt and
+grounding functions remain the M7 baseline used by scripts/eval_retrieval.py.
+
+Original M7 flow: embed question → patient-scoped vector search → grounded JSON answer.
 
 Deterministic guards around the LLM: no evidence means no LLM call; evidence is escaped and
 labelled as untrusted data; the answer only counts if it cites evidence that was actually
 provided. Logs carry IDs and counts only, never the question, evidence or answer.
 """
 
-import time
 import uuid
 from dataclasses import dataclass
 
-import structlog
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
-from redis.exceptions import RedisError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings
-from app.core.errors import LLMUnavailableError, RateLimitedError, ServiceUnavailableError
-from app.llm.base import LLMError, LLMProvider
-from app.repositories.vector_store import PgVectorStore, RetrievedChunk
-from app.services.rate_limiter import RateLimiter
-
-log = structlog.get_logger(__name__)
+from app.repositories.vector_store import RetrievedChunk
 
 NOT_FOUND_ANSWER = "I couldn't find this in your records."
 MAX_ANSWER_CHARS = 2000
@@ -99,68 +93,3 @@ def ground(answer: RagAnswer, evidence: dict[str, RetrievedChunk]) -> AskResult:
         for c in cited
     ]
     return AskResult(found=True, answer=text[:MAX_ANSWER_CHARS], citations=citations)
-
-
-class AskService:
-    def __init__(
-        self,
-        session: AsyncSession,
-        patient_id: uuid.UUID,
-        *,
-        llm: LLMProvider | None,
-        redis: Redis,
-        settings: Settings,
-    ) -> None:
-        self._patient_id = patient_id
-        self._store = PgVectorStore(session, patient_id)
-        self._llm = llm
-        self._limiter = RateLimiter(redis)
-        self._settings = settings
-
-    async def _enforce_rate_limit(self) -> None:
-        try:
-            result = await self._limiter.hit(
-                f"rl:ask:patient:{self._patient_id}",
-                limit=self._settings.ask_max_per_hour,
-                window_seconds=3600,
-            )
-        except RedisError as exc:
-            raise ServiceUnavailableError() from exc  # fail closed
-        if not result.allowed:
-            raise RateLimitedError(headers={"Retry-After": str(result.retry_after_seconds)})
-
-    async def ask(self, question: str) -> AskResult:
-        if self._llm is None:
-            raise LLMUnavailableError()
-        await self._enforce_rate_limit()
-        started = time.perf_counter()
-        try:
-            query = await self._llm.embed_query(question)
-            hits = await self._store.search(
-                query,
-                embedding_model=self._llm.embedding_model,
-                limit=self._settings.rag_top_k,
-                min_similarity=self._settings.rag_min_similarity,
-            )
-            if not hits:  # nothing relevant: answer "not found" without asking the LLM
-                result = AskResult(found=False, answer=NOT_FOUND_ANSWER, citations=[])
-            else:
-                prompt, evidence = build_prompt(question, hits)
-                raw = await self._llm.generate_json(
-                    system=SYSTEM_PROMPT, prompt=prompt, schema=RagAnswer
-                )
-                result = ground(raw, evidence)
-        except LLMError as exc:
-            log.warning(
-                "rag.llm_error", patient_id=str(self._patient_id), error_type=type(exc).__name__
-            )
-            raise LLMUnavailableError() from exc
-        log.info(
-            "rag.answered",
-            patient_id=str(self._patient_id),
-            retrieved=len(hits),
-            cited=len(result.citations),
-            found=result.found,
-            duration_ms=round((time.perf_counter() - started) * 1000, 1),
-        )
-        return result

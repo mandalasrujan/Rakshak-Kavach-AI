@@ -6,6 +6,7 @@ from fastapi import Depends, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.service import AgentService
 from app.core.config import ACCESS_COOKIE_NAME, CSRF_HEADER_NAME, Settings
 from app.core.errors import CsrfRejectedError
 from app.db.patient_context import set_patient_context
@@ -15,7 +16,6 @@ from app.services.consent_service import ConsentService
 from app.services.document_service import DocumentService
 from app.services.health_service import HealthService
 from app.services.lab_service import LabService
-from app.services.rag_service import AskService
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -114,15 +114,20 @@ def get_document_service(
     )
 
 
-def get_ask_service(
+def get_agent_service(
     request: Request,
     patient: Patient = Depends(get_current_patient),
     session: AsyncSession = Depends(get_patient_session),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_app_settings),
-) -> AskService:
-    return AskService(
-        session, patient.id, llm=request.app.state.llm, redis=redis, settings=settings
+) -> AgentService:
+    return AgentService(
+        session,
+        patient.id,
+        llm=request.app.state.llm,
+        redis=redis,
+        settings=settings,
+        sessionmaker=request.app.state.sessionmaker,
     )
 
 
