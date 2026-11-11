@@ -111,3 +111,11 @@ class DocumentService:
         if document is None:  # also for other patients' documents: no existence leak
             raise NotFoundError("Document not found.")
         return document
+
+    async def read_file(self, document_id: uuid.UUID) -> bytes:
+        """The patient's own original PDF (validated as PDF at upload)."""
+        document = await self.get(document_id)
+        try:
+            return await self._storage.get(document.storage_key)
+        except FileNotFoundError as exc:
+            raise NotFoundError("Document file not found.") from exc

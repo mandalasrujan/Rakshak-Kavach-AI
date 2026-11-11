@@ -2,7 +2,19 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import ask, auth, chats, consent, documents, labs, patient, share, shares, snapshots
+from app.api.v1 import (
+    ask,
+    auth,
+    chats,
+    consent,
+    documents,
+    labs,
+    medications,
+    patient,
+    share,
+    shares,
+    snapshots,
+)
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -15,3 +27,4 @@ api_router.include_router(chats.router)
 api_router.include_router(snapshots.router)
 api_router.include_router(shares.router)
 api_router.include_router(share.router)
+api_router.include_router(medications.router)

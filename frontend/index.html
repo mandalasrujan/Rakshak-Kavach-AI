@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Share links carry their token in the URL fragment; never leak URLs via Referer. -->
+    <meta name="referrer" content="no-referrer" />
     <title>Rakshak Kavach AI</title>
   </head>
-  <body>
+  <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
