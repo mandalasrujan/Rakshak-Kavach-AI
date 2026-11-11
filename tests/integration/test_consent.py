@@ -16,7 +16,7 @@ CONSENT = "/api/v1/patient/consent"
 
 
 async def _audit_rows(app) -> list:  # type: ignore[no-untyped-def]
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         result = await conn.execute(
             text(
                 "SELECT patient_id, actor_type, action, target_id, metadata "
@@ -61,7 +61,7 @@ async def test_grant_and_revoke_are_idempotent(client: AsyncClient, app) -> None
     await grant_consent(client)
     assert (await client.delete(CONSENT, headers=CSRF)).status_code == 200
     assert (await client.delete(CONSENT, headers=CSRF)).status_code == 200
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         records = (await conn.execute(text("SELECT count(*) FROM consent_records"))).scalar_one()
     assert records == 1
     assert [r.action for r in await _audit_rows(app)] == ["consent.granted", "consent.revoked"]
@@ -87,7 +87,7 @@ async def test_new_notice_version_requires_fresh_consent(
     regranted = (await grant_consent(client)).json()
     assert regranted["granted"] is True
     assert regranted["granted_notice_version"] == "2099-01-01"
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         active = (
             await conn.execute(
                 text("SELECT count(*) FROM consent_records WHERE revoked_at IS NULL")
@@ -114,8 +114,11 @@ async def test_consent_routes_require_auth_and_csrf(client: AsyncClient) -> None
     assert cross_site.status_code == 403
 
 
-async def test_require_consent_blocks_until_granted_and_after_revoke(settings) -> None:  # type: ignore[no-untyped-def]
+async def test_require_consent_blocks_until_granted_and_after_revoke(
+    settings, admin_engine
+) -> None:  # type: ignore[no-untyped-def]
     app = create_app(settings)
+    app.state.admin_engine = admin_engine
     probe = APIRouter()
 
     @probe.post("/api/v1/patient/_needs_consent")
@@ -124,7 +127,7 @@ async def test_require_consent_blocks_until_granted_and_after_revoke(settings) -
 
     app.include_router(probe)
     async with app.router.lifespan_context(app):
-        async with app.state.engine.begin() as conn:
+        async with app.state.admin_engine.begin() as conn:
             await conn.execute(text("TRUNCATE TABLE patients, audit_log CASCADE"))
         await app.state.redis.flushdb()
         transport = ASGITransport(app=app)
@@ -146,6 +149,6 @@ async def test_audit_log_rejects_update_and_delete(client: AsyncClient, app) -> 
     await grant_consent(client)
     for statement in ("UPDATE audit_log SET action = 'tampered'", "DELETE FROM audit_log"):
         with pytest.raises(DBAPIError, match="append-only"):
-            async with app.state.engine.begin() as conn:
+            async with app.state.admin_engine.begin() as conn:
                 await conn.execute(text(statement))
     assert [r.action for r in await _audit_rows(app)] == ["consent.granted"]

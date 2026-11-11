@@ -1,0 +1,24 @@
+# M7 retrieval eval: 20 known-answer questions over the synthetic records
+# (scripts/generate_synthetic_pdfs.py). A retrieval "hit" means a top-k chunk comes from
+# `file` + `page` and contains `contains`; an answer is correct when it contains `answer`.
+questions:
+  - {patient: asha, question: "What was my hemoglobin?", file: 01_asha_cbc_lft_2025-11-18.pdf, page: 1, contains: "Hemoglobin", answer: "12.4"}
+  - {patient: asha, question: "What was my ALT (SGPT) level?", file: 01_asha_cbc_lft_2025-11-18.pdf, page: 2, contains: "ALT", answer: "32"}
+  - {patient: asha, question: "What was my albumin?", file: 01_asha_cbc_lft_2025-11-18.pdf, page: 2, contains: "Albumin", answer: "4.2"}
+  - {patient: asha, question: "What was my platelet count?", file: 01_asha_cbc_lft_2025-11-18.pdf, page: 1, contains: "Platelet", answer: "265"}
+  - {patient: asha, question: "What was my total cholesterol in mg/dL?", file: 02_asha_lipid_mgdl_2025-11-18.pdf, page: 1, contains: "Total Cholesterol", answer: "212"}
+  - {patient: asha, question: "What was my HDL cholesterol in mg/dL?", file: 02_asha_lipid_mgdl_2025-11-18.pdf, page: 1, contains: "HDL", answer: "46"}
+  - {patient: asha, question: "What was my LDL cholesterol in mmol/L?", file: 05_asha_lipid_mmol_2026-05-13.pdf, page: 1, contains: "LDL", answer: "3.8"}
+  - {patient: asha, question: "What were my triglycerides in mmol/L?", file: 05_asha_lipid_mmol_2026-05-13.pdf, page: 1, contains: "Triglycerides", answer: "2.1"}
+  - {patient: asha, question: "What was my HbA1c?", file: 03_asha_hba1c_2025-11-18.pdf, page: 1, contains: "HbA1c", answer: "7.1"}
+  - {patient: asha, question: "What was my glycated haemoglobin result?", file: 04_asha_glycated_haemoglobin_2026-05-13.pdf, page: 1, contains: "Glycated", answer: "7.6"}
+  - {patient: asha, question: "What was my fasting plasma glucose?", file: 06_asha_fasting_glucose_mmol_ambiguous_date.pdf, page: 1, contains: "Fasting Plasma Glucose", answer: "7.4"}
+  - {patient: asha, question: "Which medicines were prescribed to me?", file: 07_asha_prescription_2026-05-14.pdf, page: 1, contains: "Metformin", answer: "Metformin"}
+  - {patient: asha, question: "How often should I take atorvastatin?", file: 07_asha_prescription_2026-05-14.pdf, page: 1, contains: "Atorvastatin", answer: "once daily"}
+  - {patient: asha, question: "What did the MRI of my knee show?", file: 09_asha_mri_knee_2025-08-20.pdf, page: 1, contains: "degenerative", answer: "degenerative"}
+  - {patient: asha, question: "What was my blood pressure at the consultation?", file: 08_asha_consultation_note_2026-05-14.pdf, page: 1, contains: "BP 132/84", answer: "132/84"}
+  - {patient: asha, question: "What is my known allergy?", file: 10_asha_self_reported_history_injection.pdf, page: 1, contains: "Penicillin", answer: "Penicillin"}
+  - {patient: ravi, question: "What was my serum creatinine?", file: 11_ravi_kidney_panel_umol_2026-03-23.pdf, page: 1, contains: "Creatinine", answer: "118"}
+  - {patient: ravi, question: "What was my eGFR?", file: 11_ravi_kidney_panel_umol_2026-03-23.pdf, page: 1, contains: "eGFR", answer: "58"}
+  - {patient: ravi, question: "What was my TSH?", file: 12_ravi_thyroid_2026-03-23.pdf, page: 1, contains: "TSH", answer: "3.2"}
+  - {patient: ravi, question: "What did my chest CT show?", file: 14_ravi_ct_chest_2026-01-15.pdf, page: 1, contains: "consolidation", answer: "no acute cardiopulmonary abnormality"}

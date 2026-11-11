@@ -64,7 +64,7 @@ async def test_bearer_header_is_not_accepted(client: AsyncClient) -> None:
 
 async def test_token_for_deleted_patient_is_rejected(client: AsyncClient, app) -> None:  # type: ignore[no-untyped-def]
     await register_and_login(client, "gone@example.com")
-    async with app.state.engine.begin() as conn:
+    async with app.state.admin_engine.begin() as conn:
         await conn.execute(text("DELETE FROM patients"))
     assert (await client.get(ME)).status_code == 401
 
@@ -149,11 +149,12 @@ async def _client_for(app) -> AsyncClient:  # type: ignore[no-untyped-def]
     return AsyncClient(transport=ASGITransport(app=app), base_url="https://testserver")
 
 
-async def test_login_is_rate_limited_per_email(settings_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_login_is_rate_limited_per_email(settings_factory, admin_engine) -> None:  # type: ignore[no-untyped-def]
     app = create_app(settings_factory(login_max_attempts_per_email=3))
+    app.state.admin_engine = admin_engine
     async with app.router.lifespan_context(app), await _client_for(app) as http:
         await app.state.redis.flushdb()
-        async with app.state.engine.begin() as conn:
+        async with app.state.admin_engine.begin() as conn:
             await conn.execute(text("TRUNCATE patients CASCADE"))
         await register(http, "limited@example.com")
         statuses = [
@@ -177,11 +178,12 @@ async def test_login_is_rate_limited_per_ip(settings_factory) -> None:  # type: 
     assert [first.status_code, second.status_code, third.status_code] == [401, 401, 429]
 
 
-async def test_successful_login_resets_email_counter(settings_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_successful_login_resets_email_counter(settings_factory, admin_engine) -> None:  # type: ignore[no-untyped-def]
     app = create_app(settings_factory(login_max_attempts_per_email=2))
+    app.state.admin_engine = admin_engine
     async with app.router.lifespan_context(app), await _client_for(app) as http:
         await app.state.redis.flushdb()
-        async with app.state.engine.begin() as conn:
+        async with app.state.admin_engine.begin() as conn:
             await conn.execute(text("TRUNCATE patients CASCADE"))
         await register(http, "reset@example.com")
         await login(http, "reset@example.com", "wrong-password-xx")
@@ -190,11 +192,12 @@ async def test_successful_login_resets_email_counter(settings_factory) -> None: 
         assert (await login(http, "reset@example.com")).status_code == 200
 
 
-async def test_registration_is_rate_limited_per_ip(settings_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_registration_is_rate_limited_per_ip(settings_factory, admin_engine) -> None:  # type: ignore[no-untyped-def]
     app = create_app(settings_factory(register_max_attempts_per_ip=1))
+    app.state.admin_engine = admin_engine
     async with app.router.lifespan_context(app), await _client_for(app) as http:
         await app.state.redis.flushdb()
-        async with app.state.engine.begin() as conn:
+        async with app.state.admin_engine.begin() as conn:
             await conn.execute(text("TRUNCATE patients CASCADE"))
         assert (await register(http, "r1@example.com")).status_code == 201
         assert (await register(http, "r2@example.com")).status_code == 429

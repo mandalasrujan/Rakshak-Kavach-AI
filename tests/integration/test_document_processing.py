@@ -24,7 +24,9 @@ async def _uploaded(client: AsyncClient, data: bytes, email: str) -> tuple[str, 
 
 
 def _processor(app, max_pages: int = 50) -> DocumentProcessor:  # type: ignore[no-untyped-def]
-    return DocumentProcessor(app.state.sessionmaker, app.state.storage, max_pages=max_pages)
+    return DocumentProcessor(
+        app.state.sessionmaker, app.state.storage, llm=app.state.llm, max_pages=max_pages
+    )
 
 
 async def _status(client: AsyncClient, document_id: str) -> tuple[str, str | None]:
@@ -87,7 +89,7 @@ async def test_processing_is_idempotent_and_patient_scoped(
     assert wrong_owner == "missing"  # a job with the wrong patient_id cannot touch the document
     assert await processor.process(uuid.UUID(document_id), uuid.UUID(patient_id)) == "ready"
     assert await processor.process(uuid.UUID(document_id), uuid.UUID(patient_id)) == "ready"
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         ready_events = (
             await conn.execute(
                 text("SELECT count(*) FROM audit_log WHERE action = 'document.ready'")
@@ -97,7 +99,7 @@ async def test_processing_is_idempotent_and_patient_scoped(
 
 
 async def _chunks(app, document_id: str) -> list:  # type: ignore[no-untyped-def]
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         result = await conn.execute(
             text(
                 "SELECT patient_id, document_id, page, kind, text FROM chunks "
@@ -127,7 +129,7 @@ async def test_processing_stores_patient_scoped_chunks(
     assert (lab_pages.count(1), lab_pages.count(2)) == (6, 5)
     assert any(r.text.startswith("Test: Hemoglobin; Result: 12.4") for r in rows_a)
 
-    async with app.state.engine.connect() as conn:
+    async with app.state.admin_engine.connect() as conn:
         details = (
             await conn.execute(
                 text(
@@ -137,7 +139,12 @@ async def test_processing_stores_patient_scoped_chunks(
                 {"d": doc_a},
             )
         ).scalar_one()
-    assert details == {"pages": 2, "lab_rows": 11, "narrative_chunks": len(rows_a) - 11}
+    assert details == {
+        "pages": 2,
+        "lab_rows": 11,
+        "narrative_chunks": len(rows_a) - 11,
+        "lab_results_flagged": 0,
+    }
 
 
 async def test_reprocessing_after_a_crash_replaces_chunks(
@@ -151,7 +158,7 @@ async def test_reprocessing_after_a_crash_replaces_chunks(
     processor = _processor(app)
     await processor.process(uuid.UUID(document_id), uuid.UUID(patient_id))
     first = await _chunks(app, document_id)
-    async with app.state.engine.begin() as conn:  # simulate a worker dying mid-job
+    async with app.state.admin_engine.begin() as conn:  # simulate a worker dying mid-job
         await conn.execute(
             text("UPDATE documents SET status = 'processing' WHERE id = :d"), {"d": document_id}
         )

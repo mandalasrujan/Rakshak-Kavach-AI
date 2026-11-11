@@ -32,6 +32,8 @@ class ExtractedChunk:
     page: int  # 1-based
     kind: str
     text: str
+    # Lab rows only: (header, cell) pairs exactly as extracted, for deterministic parsing (M8).
+    cells: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,13 @@ def _extract_page(page: pymupdf.Page, page_number: int) -> list[ExtractedChunk]:
         table_rects.append(rect)
         if _is_lab_table(header):
             lab_rows.extend(
-                ExtractedChunk(page_number, LAB_ROW, _row_text(header, row)) for row in cleaned
+                ExtractedChunk(
+                    page_number,
+                    LAB_ROW,
+                    _row_text(header, row),
+                    tuple(zip(header, row, strict=False)),
+                )
+                for row in cleaned
             )
         elif cleaned:
             parts.append((rect.y0, "\n".join(_row_text(header, row) for row in cleaned)))

@@ -10,6 +10,8 @@ from arq.connections import RedisSettings
 from app.core.logging import configure_logging
 from app.core.storage import create_storage
 from app.db.session import create_engine, create_sessionmaker
+from app.llm.base import LLMNotConfiguredError, LLMProvider
+from app.llm.factory import create_llm_provider
 from app.models.document import FAILED
 from app.services.document_processing import DocumentProcessor
 from worker.config import get_worker_config
@@ -53,15 +55,25 @@ async def startup(ctx: dict[str, Any]) -> None:
     configure_logging(config.log_level)
     engine = create_engine(config.database_url)
     ctx["engine"] = engine
+    llm: LLMProvider | None
+    try:
+        llm = create_llm_provider(config)
+    except LLMNotConfiguredError:
+        llm = None  # documents fail with `embedding_unavailable` until configured
+        log.error("llm.not_configured", provider=config.llm_provider)
+    ctx["llm"] = llm
     ctx["document_processor"] = DocumentProcessor(
         create_sessionmaker(engine),
         create_storage(config.storage_backend, config.storage_local_path),
+        llm=llm,
         max_pages=config.max_pdf_pages,
     )
     log.info("worker.started")
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
+    if ctx.get("llm") is not None:
+        await ctx["llm"].aclose()
     engine = ctx.get("engine")
     if engine is not None:
         await engine.dispose()

@@ -44,3 +44,17 @@ async def upload(client: AsyncClient, data: bytes, filename: str = "report.pdf")
         files={"file": (filename, data, "application/pdf")},
         headers=CSRF,
     )
+
+
+_LOG_METADATA_KEYS = {"request_id", "timestamp", "path", "duration_ms", "status_code", "level"}
+
+
+def log_content(logs: list[dict[str, object]]) -> str:
+    """Log values that could carry content (IDs, timings and paths excluded), so PHI checks do
+    not false-positive on random UUIDs or durations that happen to contain the same digits."""
+    return " | ".join(
+        str(value)
+        for entry in logs
+        for key, value in entry.items()
+        if key not in _LOG_METADATA_KEYS and not key.endswith("_id")
+    )

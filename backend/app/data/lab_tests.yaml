@@ -1,0 +1,115 @@
+# Canonical lab test dictionary (PROJECT_SPEC.md section 4.1). Versioned: bump `version`
+# whenever a rule changes; every normalized result records the version it was built with.
+#
+# convert: unit -> [slope, intercept]; canonical = slope * value + intercept.
+# Conversions are functions, not just factors (HbA1c IFCC -> NGSP has an intercept).
+# plausible: [min, max] in the canonical unit; values outside are rejected, never "fixed".
+version: "2026-11-11"
+
+# Spelling variants -> canonical spelling. Keys are lowercase with spaces removed;
+# the Greek letter mu is folded to the micro sign before lookup.
+unit_aliases:
+  "%": "%"
+  "mg/dl": "mg/dL"
+  "g/dl": "g/dL"
+  "g/l": "g/L"
+  "mmol/l": "mmol/L"
+  "mmol/mol": "mmol/mol"
+  "µmol/l": "µmol/L"
+  "umol/l": "µmol/L"
+  "meq/l": "mEq/L"
+  "u/l": "U/L"
+  "iu/l": "U/L"
+  "fl": "fL"
+  "pg": "pg"
+  "mm/hr": "mm/hr"
+  "mm/h": "mm/hr"
+  "µiu/ml": "µIU/mL"
+  "uiu/ml": "µIU/mL"
+  "miu/l": "mIU/L"
+  "ng/dl": "ng/dL"
+  "ng/ml": "ng/mL"
+  "pg/ml": "pg/mL"
+  "pmol/l": "pmol/L"
+  "nmol/l": "nmol/L"
+  "ml/min/1.73m2": "mL/min/1.73m2"
+  "ml/min/1.73m²": "mL/min/1.73m2"
+  "x10^3/µl": "x10^3/µL"
+  "x10^3/ul": "x10^3/µL"
+  "10^3/µl": "x10^3/µL"
+  "10^3/ul": "x10^3/µL"
+  "thou/µl": "x10^3/µL"
+  "thou/ul": "x10^3/µL"
+  "x10^9/l": "x10^9/L"
+  "10^9/l": "x10^9/L"
+  "x10^6/µl": "x10^6/µL"
+  "x10^6/ul": "x10^6/µL"
+  "10^6/µl": "x10^6/µL"
+  "10^6/ul": "x10^6/µL"
+  "million/µl": "x10^6/µL"
+  "million/ul": "x10^6/µL"
+  "million/cumm": "x10^6/µL"
+  "x10^12/l": "x10^12/L"
+  "10^12/l": "x10^12/L"
+  "/cumm": "/µL"
+  "cells/cumm": "/µL"
+  "/mm3": "/µL"
+  "/µl": "/µL"
+  "/ul": "/µL"
+  "cells/µl": "/µL"
+
+tests:
+  # Complete blood count
+  - {code: HGB, name: Hemoglobin, unit: g/dL, aliases: [hemoglobin, haemoglobin, hb, hgb], convert: {g/L: [0.1, 0]}, plausible: [1, 25]}
+  - {code: RBC, name: RBC Count, unit: x10^6/µL, aliases: [rbc count, rbc, red blood cell count, total rbc count, erythrocyte count], convert: {x10^12/L: [1, 0]}, plausible: [0.5, 10]}
+  - {code: HCT, name: Hematocrit, unit: "%", aliases: [hematocrit, haematocrit, hct, pcv, packed cell volume], plausible: [5, 80]}
+  - {code: MCV, name: MCV, unit: fL, aliases: [mcv, mean corpuscular volume], plausible: [40, 150]}
+  - {code: MCH, name: MCH, unit: pg, aliases: [mch, mean corpuscular hemoglobin, mean corpuscular haemoglobin], plausible: [10, 60]}
+  - {code: MCHC, name: MCHC, unit: g/dL, aliases: [mchc], convert: {g/L: [0.1, 0]}, plausible: [20, 45]}
+  - {code: RDW, name: RDW, unit: "%", aliases: [rdw, rdw-cv, red cell distribution width], plausible: [5, 40]}
+  - {code: WBC, name: Total WBC Count, unit: x10^3/µL, aliases: [total wbc count, wbc, wbc count, total leucocyte count, total leukocyte count, tlc], convert: {x10^9/L: [1, 0], /µL: [0.001, 0]}, plausible: [0.1, 500]}
+  - {code: PLT, name: Platelet Count, unit: x10^3/µL, aliases: [platelet count, platelets, plt], convert: {x10^9/L: [1, 0], /µL: [0.001, 0]}, plausible: [1, 3000]}
+  - {code: NEUT_PCT, name: Neutrophils, unit: "%", aliases: [neutrophils, neutrophil], plausible: [0, 100]}
+  - {code: LYMPH_PCT, name: Lymphocytes, unit: "%", aliases: [lymphocytes, lymphocyte], plausible: [0, 100]}
+  - {code: MONO_PCT, name: Monocytes, unit: "%", aliases: [monocytes, monocyte], plausible: [0, 100]}
+  - {code: EOS_PCT, name: Eosinophils, unit: "%", aliases: [eosinophils, eosinophil], plausible: [0, 100]}
+  - {code: BASO_PCT, name: Basophils, unit: "%", aliases: [basophils, basophil], plausible: [0, 100]}
+  - {code: ESR, name: ESR, unit: mm/hr, aliases: [esr, erythrocyte sedimentation rate], plausible: [0, 200]}
+  # Liver function
+  - {code: TBIL, name: Total Bilirubin, unit: mg/dL, aliases: [total bilirubin, bilirubin total, serum bilirubin total, bilirubin], convert: {µmol/L: [0.058479532, 0]}, plausible: [0, 50]}
+  - {code: DBIL, name: Direct Bilirubin, unit: mg/dL, aliases: [direct bilirubin, bilirubin direct, conjugated bilirubin], convert: {µmol/L: [0.058479532, 0]}, plausible: [0, 40]}
+  - {code: ALT, name: ALT (SGPT), unit: U/L, aliases: [alt, sgpt, alanine aminotransferase, alt (sgpt), sgpt (alt)], plausible: [1, 10000]}
+  - {code: AST, name: AST (SGOT), unit: U/L, aliases: [ast, sgot, aspartate aminotransferase, ast (sgot), sgot (ast)], plausible: [1, 10000]}
+  - {code: ALP, name: Alkaline Phosphatase, unit: U/L, aliases: [alkaline phosphatase, alp], plausible: [5, 5000]}
+  - {code: GGT, name: GGT, unit: U/L, aliases: [ggt, gamma gt, gamma-glutamyl transferase, gamma glutamyl transferase], plausible: [1, 5000]}
+  - {code: TP, name: Total Protein, unit: g/dL, aliases: [total protein, serum total protein], convert: {g/L: [0.1, 0]}, plausible: [2, 15]}
+  - {code: ALB, name: Albumin, unit: g/dL, aliases: [albumin, serum albumin], convert: {g/L: [0.1, 0]}, plausible: [0.5, 7]}
+  - {code: GLOB, name: Globulin, unit: g/dL, aliases: [globulin, serum globulin], convert: {g/L: [0.1, 0]}, plausible: [0.5, 10]}
+  # Lipid profile (mmol/L x 38.67 for cholesterol, x 88.57 for triglycerides)
+  - {code: CHOL, name: Total Cholesterol, unit: mg/dL, aliases: [total cholesterol, cholesterol total, serum cholesterol, cholesterol], convert: {mmol/L: [38.67, 0]}, plausible: [30, 1000]}
+  - {code: LDL, name: LDL Cholesterol, unit: mg/dL, aliases: [ldl cholesterol, ldl, ldl-c, ldl cholesterol direct], convert: {mmol/L: [38.67, 0]}, plausible: [5, 800]}
+  - {code: HDL, name: HDL Cholesterol, unit: mg/dL, aliases: [hdl cholesterol, hdl, hdl-c], convert: {mmol/L: [38.67, 0]}, plausible: [5, 200]}
+  - {code: VLDL, name: VLDL Cholesterol, unit: mg/dL, aliases: [vldl cholesterol, vldl], convert: {mmol/L: [38.67, 0]}, plausible: [1, 400]}
+  - {code: TRIG, name: Triglycerides, unit: mg/dL, aliases: [triglycerides, triglyceride, tg, serum triglycerides], convert: {mmol/L: [88.57, 0]}, plausible: [10, 10000]}
+  # Glycemic control (glucose mmol/L x 18.0; HbA1c IFCC -> NGSP = 0.0915 x + 2.15)
+  - {code: HBA1C, name: HbA1c, unit: "%", aliases: [hba1c, a1c, glycated haemoglobin, glycated hemoglobin, glycosylated hemoglobin, glycosylated haemoglobin, hemoglobin a1c, haemoglobin a1c], convert: {mmol/mol: [0.0915, 2.15]}, plausible: [2, 20]}
+  - {code: GLU_FASTING, name: Fasting Plasma Glucose, unit: mg/dL, aliases: [fasting plasma glucose, fasting blood glucose, fasting blood sugar, fbs, fasting glucose, glucose fasting], convert: {mmol/L: [18.0, 0]}, plausible: [10, 1500]}
+  - {code: GLU_PP, name: Postprandial Glucose, unit: mg/dL, aliases: [postprandial plasma glucose, post prandial blood sugar, ppbs, postprandial glucose, post prandial glucose], convert: {mmol/L: [18.0, 0]}, plausible: [10, 1500]}
+  - {code: GLU_RANDOM, name: Random Glucose, unit: mg/dL, aliases: [random blood sugar, rbs, random plasma glucose, random glucose], convert: {mmol/L: [18.0, 0]}, plausible: [10, 1500]}
+  # Kidney function and electrolytes
+  - {code: CREAT, name: Serum Creatinine, unit: mg/dL, aliases: [serum creatinine, creatinine, s. creatinine], convert: {µmol/L: [0.011312217, 0]}, plausible: [0.05, 30]}
+  - {code: UREA, name: Blood Urea, unit: mg/dL, aliases: [blood urea, urea, serum urea], convert: {mmol/L: [6.006, 0]}, plausible: [1, 500]}
+  - {code: BUN, name: Blood Urea Nitrogen, unit: mg/dL, aliases: [bun, blood urea nitrogen], convert: {mmol/L: [2.801, 0]}, plausible: [1, 250]}
+  - {code: URIC, name: Uric Acid, unit: mg/dL, aliases: [uric acid, serum uric acid], convert: {µmol/L: [0.016812374, 0]}, plausible: [0.5, 30]}
+  - {code: EGFR, name: eGFR, unit: mL/min/1.73m2, aliases: [egfr, estimated gfr], plausible: [1, 200]}
+  - {code: NA, name: Sodium, unit: mmol/L, aliases: [sodium, serum sodium, na], convert: {mEq/L: [1, 0]}, plausible: [90, 200]}
+  - {code: K, name: Potassium, unit: mmol/L, aliases: [potassium, serum potassium, k], convert: {mEq/L: [1, 0]}, plausible: [1, 10]}
+  - {code: CL, name: Chloride, unit: mmol/L, aliases: [chloride, serum chloride, cl], convert: {mEq/L: [1, 0]}, plausible: [60, 150]}
+  - {code: CA, name: Calcium, unit: mg/dL, aliases: [calcium, serum calcium, total calcium], convert: {mmol/L: [4.008, 0]}, plausible: [2, 20]}
+  # Thyroid
+  - {code: TSH, name: TSH, unit: µIU/mL, aliases: [tsh, thyroid stimulating hormone], convert: {mIU/L: [1, 0]}, plausible: [0.001, 500]}
+  - {code: FT4, name: Free T4, unit: ng/dL, aliases: [free t4, ft4, free thyroxine], convert: {pmol/L: [0.077700078, 0]}, plausible: [0.05, 10]}
+  - {code: FT3, name: Free T3, unit: pg/mL, aliases: [free t3, ft3, free triiodothyronine], convert: {pmol/L: [0.651041667, 0]}, plausible: [0.2, 30]}
+  # Vitamins
+  - {code: VITD, name: Vitamin D (25-OH), unit: ng/mL, aliases: [vitamin d, 25-oh vitamin d, 25 hydroxy vitamin d, vitamin d (25-oh), vitamin d total, 25-hydroxy vitamin d], convert: {nmol/L: [0.400641026, 0]}, plausible: [1, 200]}
+  - {code: B12, name: Vitamin B12, unit: pg/mL, aliases: [vitamin b12, b12, cyanocobalamin], convert: {pmol/L: [1.355, 0]}, plausible: [20, 5000]}
