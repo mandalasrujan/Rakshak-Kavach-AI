@@ -139,7 +139,12 @@ async def test_processing_stores_patient_scoped_chunks(
                 {"d": doc_a},
             )
         ).scalar_one()
-    assert details == {"pages": 2, "lab_rows": 11, "narrative_chunks": len(rows_a) - 11}
+    assert details == {
+        "pages": 2,
+        "lab_rows": 11,
+        "narrative_chunks": len(rows_a) - 11,
+        "lab_results_flagged": 0,
+    }
 
 
 async def test_reprocessing_after_a_crash_replaces_chunks(

@@ -14,6 +14,7 @@ from app.services.auth_service import AuthService
 from app.services.consent_service import ConsentService
 from app.services.document_service import DocumentService
 from app.services.health_service import HealthService
+from app.services.lab_service import LabService
 from app.services.rag_service import AskService
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -123,3 +124,10 @@ def get_ask_service(
     return AskService(
         session, patient.id, llm=request.app.state.llm, redis=redis, settings=settings
     )
+
+
+def get_lab_service(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_patient_session),
+) -> LabService:
+    return LabService(session, patient.id)

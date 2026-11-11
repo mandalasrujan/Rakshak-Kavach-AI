@@ -4,6 +4,7 @@ from app.models.audit import AuditLog
 from app.models.chunk import Chunk
 from app.models.consent import ConsentRecord
 from app.models.document import Document
+from app.models.lab_result import LabResult
 from app.models.patient import Patient
 
-__all__ = ["AuditLog", "Chunk", "ConsentRecord", "Document", "Patient"]
+__all__ = ["AuditLog", "Chunk", "ConsentRecord", "Document", "LabResult", "Patient"]
