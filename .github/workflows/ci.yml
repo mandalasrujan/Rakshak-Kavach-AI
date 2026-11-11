@@ -48,6 +48,8 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://ci:ci-only-password@localhost:5432/rakshak_test
       TEST_REDIS_URL: redis://localhost:6379/15
+      DATABASE_URL: postgresql+asyncpg://ci:ci-only-password@localhost:5432/rakshak_test
+      REDIS_URL: redis://localhost:6379/15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
