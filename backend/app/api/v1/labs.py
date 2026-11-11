@@ -1,10 +1,11 @@
-"""Patient lab data: normalized results with provenance."""
+"""Patient lab data: normalized results with provenance and deterministic comparisons."""
 
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import enforce_same_site_request, get_current_patient, get_lab_service
 from app.core.errors import ErrorResponse
-from app.schemas.lab import LabResultList, LabResultRead
+from app.schemas.lab import LabResultList, LabResultRead, LabTrendList, LabTrendRead
+from app.services.lab_comparison import COMPARISON_NOTE
 from app.services.lab_service import LabService
 
 router = APIRouter(
@@ -30,3 +31,20 @@ async def list_lab_results(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/trends",
+    response_model=LabTrendList,
+    summary="Previous-vs-latest comparison per test",
+    description=(
+        "Computed deterministically in Python from normalized results (no LLM). Status is "
+        "relative to each report's own reference range and is not a diagnosis."
+    ),
+)
+async def lab_trends(
+    test_code: str | None = TEST_CODE,
+    service: LabService = Depends(get_lab_service),
+) -> LabTrendList:
+    items = await service.trends(test_code=test_code)
+    return LabTrendList(items=[LabTrendRead.model_validate(i) for i in items], note=COMPARISON_NOTE)
