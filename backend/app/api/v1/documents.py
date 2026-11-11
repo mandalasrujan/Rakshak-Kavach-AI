@@ -1,4 +1,4 @@
-"""Patient documents: upload (202, processed asynchronously), list, get status."""
+"""Patient documents: upload (202, processed asynchronously), list, get status, delete."""
 
 import uuid
 
@@ -8,12 +8,14 @@ from app.api.deps import (
     enforce_same_site_request,
     get_app_settings,
     get_current_patient,
+    get_document_deletion_service,
     get_document_service,
     require_consent,
 )
 from app.core.config import Settings
 from app.core.errors import ErrorResponse, PayloadTooLargeError
 from app.schemas.document import DocumentList, DocumentRead
+from app.services.document_deletion import DocumentDeletionService
 from app.services.document_service import DocumentService
 
 router = APIRouter(
@@ -95,3 +97,22 @@ async def get_document(
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentRead:
     return DocumentRead.model_validate(await service.get(document_id))
+
+
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a document and everything derived from it",
+    description=(
+        "Deletes the stored file, its chunks and embeddings, lab results, medications, and any "
+        "chats that cited it (with their stored conversation). Consent is not required to "
+        "delete. A 503 means nothing was deleted and the request can be retried."
+    ),
+    responses={404: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+)
+async def delete_document(
+    document_id: uuid.UUID,
+    service: DocumentDeletionService = Depends(get_document_deletion_service),
+) -> Response:
+    await service.delete(document_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

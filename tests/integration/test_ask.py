@@ -88,7 +88,7 @@ async def test_unrelated_question_returns_not_found(
     app.state.llm = spy = SpyProvider()
     await _patient_with_docs(client, app, synthetic_dir, "irrelevant@example.com", [CBC])
     body = (await _ask(client, "passport number expiry visa")).json()
-    assert body == {"found": False, "answer": NOT_FOUND_ANSWER, "citations": []}
+    assert body == {"found": False, "answer": NOT_FOUND_ANSWER, "citations": [], "urgent": False}
     assert spy.prompts == []  # nothing relevant retrieved, so the LLM is never asked
 
 
@@ -127,7 +127,7 @@ async def test_ungrounded_llm_answers_are_replaced_by_not_found(
     )
     await _patient_with_docs(client, app, synthetic_dir, "halluc@example.com", [CBC])
     body = (await _ask(client, "What was my hemoglobin?")).json()
-    assert body == {"found": False, "answer": NOT_FOUND_ANSWER, "citations": []}
+    assert body == {"found": False, "answer": NOT_FOUND_ANSWER, "citations": [], "urgent": False}
 
 
 async def test_no_cross_patient_evidence_reaches_the_llm(
@@ -157,7 +157,7 @@ async def test_injected_document_text_is_passed_only_as_quoted_data(
     assert "Ignore all previous instructions" in prompt[start:]  # inside evidence only
     assert "Ignore all previous instructions" not in prompt[:start]
     assert body["found"] is True and "Penicillin" in body["answer"]
-    assert set(body) == {"found", "answer", "citations"}  # no actions can be returned
+    assert set(body) == {"found", "answer", "citations", "urgent"}  # no actions can be returned
     assert body["citations"][0]["document_id"] == docs[INJECTION]
 
 
@@ -221,4 +221,4 @@ async def test_ask_logs_are_phi_free(client: AsyncClient, app, synthetic_dir: Pa
     assert body["found"]
     for private in ("secret hemoglobin", "Hemoglobin", "12.4", body["answer"]):
         assert private not in dumped
-    assert any(entry["event"] == "rag.answered" for entry in logs)
+    assert any(entry["event"] == "agent.answered" for entry in logs)

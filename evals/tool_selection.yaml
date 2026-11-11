@@ -1,0 +1,13 @@
+# M10 tool-selection eval: 10 hand-written questions and the tools the agent must call.
+# search_records always runs; get_labs carries the canonical test code (null = all tests).
+questions:
+  - {question: "Is my HbA1c getting worse?", labs: [HBA1C], medications: false}
+  - {question: "What was my hemoglobin?", labs: [HGB], medications: false}
+  - {question: "Compare my cholesterol over time", labs: [CHOL], medications: false}
+  - {question: "How have my lab results changed?", labs: [null], medications: false}
+  - {question: "What medicines am I taking?", labs: [], medications: true}
+  - {question: "How often should I take my tablets?", labs: [], medications: true}
+  - {question: "What did my knee MRI show?", labs: [], medications: false}
+  - {question: "Do I have any allergies?", labs: [], medications: false}
+  - {question: "Has my LDL cholesterol or fasting glucose improved?", labs: [LDL, GLU_FASTING], medications: false}
+  - {question: "What was my eGFR and which drugs were prescribed?", labs: [EGFR], medications: true}

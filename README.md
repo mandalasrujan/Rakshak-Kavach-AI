@@ -2,7 +2,7 @@
 
 Rakshak Kavach AI is a patient health records assistant. Patients upload digital medical PDFs (lab reports, imaging reports, prescriptions, doctor notes) and chat with a single Medical History Agent that answers only from their own records, with page-level citations. Lab values are extracted, normalized and compared in plain code, urgent symptoms are caught by deterministic rules, and patients can share a read-only, patient-approved summary with a doctor through a QR code and PIN. It does not diagnose, predict or prescribe.
 
-**Status:** Phase 3 complete: M0–M5 plus M6 (embeddings and RLS isolation), M7 (baseline RAG), M8 (lab normalization) and M9 (lab comparison). Next milestone: M10 (Medical History Agent). The live deployment needs a host to be configured; see [docs/deployment.md](docs/deployment.md).
+**Status:** M0–M12 complete. Phase 4 added M10 (LangGraph Medical History Agent), M11 (safety nodes and guardrails) and M12 (secure document deletion). Next milestone: M13 (summary snapshots). The live deployment needs a host to be configured; see [docs/deployment.md](docs/deployment.md).
 
 **Specification:** [`PROJECT_SPEC.md`](PROJECT_SPEC.md) is the source of truth. Working rules are in [`AGENTS.md`](AGENTS.md).
 
@@ -15,7 +15,8 @@ Rakshak Kavach AI is a patient health records assistant. Patients upload digital
 - Consent: `GET/POST/DELETE /api/v1/patient/consent` (versioned notice disclosing Gemini processing); uploads require active consent; every consent and document event is written to an append-only `audit_log`.
 - Documents: `POST /api/v1/patient/documents` (PDF only by magic bytes, size limit, per-patient dedup, 202), `GET /api/v1/patient/documents[/{id}]`; the ARQ worker validates (encryption, page limit), extracts one chunk per lab-table row plus page-numbered narrative chunks, and marks the document `ready` or `failed` with a reason.
 - Isolation: the API and worker connect as a non-owner role (`rakshak_app` member) under PostgreSQL row-level security; every request/job sets a transaction-scoped `app.patient_id`.
-- Ask: `POST /api/v1/patient/ask` answers only from your records with page citations (pgvector search, Gemini via `LLMProvider`), or returns a fixed "not found in your records".
+- Agent (LangGraph): `POST /api/v1/patient/ask` (single question) and `/api/v1/patient/chats` (create, list, history, send, delete; conversation state in RLS-protected checkpoints). Graph: consent → red-flag rules → input guard → deterministic read-only tools (`search_records`, `get_labs`, `get_medications`) → one LLM call → output guard. Answers only from your records with page citations, or a fixed "not found"; urgent-symptom messages get fixed emergency guidance (`urgent: true`) that the LLM cannot override.
+- Deletion: `DELETE /api/v1/patient/documents/{id}` removes the file, chunks and embeddings, lab results, medications and any chats that cited it; retry-safe, and workers cannot recreate deleted data.
 - Labs: `GET /api/v1/patient/labs` (normalized results with source provenance) and `GET /api/v1/patient/labs/trends` (deterministic previous-vs-latest comparison; not a diagnosis).
 - Minimal React chat in `frontend/` (login, consent, upload, ask).
 - OpenAPI docs at `/api/v1/docs`.
@@ -82,6 +83,15 @@ python scripts/eval_retrieval.py --provider gemini --answers   # needs GEMINI_* 
 |---|---|---|---|---|
 | Offline `fake` provider (hash embedder, extractive answers) | 0.90 | 0.85 | 0.85 | 1,148 / 7,337 |
 | Gemini | not yet measured (no API access in the build environment) | | | |
+
+Safety and tool-selection evals (M10/M11, deterministic, run in CI as unit tests):
+
+| Eval | Result |
+|---|---|
+| Tool selection (`evals/tool_selection.yaml`, 10 questions) | 10/10 |
+| Red flags (`evals/safety_cases.yaml`, 22 urgent + 20 benign/negated) | recall 1.0, precision 1.0 (in-sample; first run recall 0.82) |
+| Input injection (8 attacks / 8 benign) | 8/8 blocked, 0 false blocks |
+| Output guard (12 diagnostic / 10 factual) | 12/12 blocked, 0 false blocks |
 
 Other commands:
 
