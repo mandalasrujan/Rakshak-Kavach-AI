@@ -74,7 +74,11 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8080}
+      # Behind the web container: trust its X-Forwarded-For (nginx overwrites it with the real
+      # client IP). The API port itself is bound to 127.0.0.1 only.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /data/storage
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
@@ -113,6 +117,18 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    # Production frontend (nginx): http://localhost:8080 serves the app and proxies /api.
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

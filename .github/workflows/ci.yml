@@ -131,10 +131,14 @@ jobs:
           sed -i "s/change-me-postgres-password/${pg_pw}/g; s/change-me-app-db-password/${app_pw}/g; s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=${jwt}/; s/^LLM_PROVIDER=.*/LLM_PROVIDER=fake/" .env
       - run: docker compose config --quiet
       - run: docker compose up --build --detach --wait --wait-timeout 300
-      - name: Smoke test health and auth
+      - name: Smoke test health, auth and frontend
         run: |
           curl -fsS http://127.0.0.1:8000/health
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/patient/me)
+          test "$code" = "401"
+          curl -fsS http://127.0.0.1:8080/health
+          curl -fsS http://127.0.0.1:8080/ | grep -q "Rakshak Kavach AI"
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/patient/me)
           test "$code" = "401"
       - if: failure()
         run: docker compose logs --no-color
