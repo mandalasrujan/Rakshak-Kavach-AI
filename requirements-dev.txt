@@ -2,7 +2,6 @@
 -r requirements.txt
 pytest==9.2.0
 pytest-asyncio==1.4.1.post1
-httpx==0.28.1
 testcontainers[postgres,redis]==4.13.3
 ruff==0.17.4
 reportlab==5.1.0
