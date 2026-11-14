@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from app.agent.graph import build_prompt, ground
-from app.agent.tools import find_test_codes, render_trend, route
+from app.agent.tools import Evidence, find_test_codes, render_trend, route
 from app.services.extraction import extract_pdf
 from app.services.lab_comparison import LabPoint, compare
 from app.services.medication_extraction import extract_medications
@@ -60,9 +60,9 @@ def test_trend_rendering_is_deterministic_and_carries_computed_numbers() -> None
         assert fragment in text
 
 
-def _evidence(text: str, page: int = 1) -> dict:  # type: ignore[type-arg]
+def _evidence(text: str, page: int = 1, id: str = "E1") -> Evidence:
     return {
-        "id": "E1",
+        "id": id,
         "kind": "chunk",
         "text": text,
         "sources": [
@@ -87,7 +87,7 @@ def test_prompt_escapes_question_history_and_evidence() -> None:
 
 
 def test_grounding_flattens_sources_and_rejects_unknown_citations() -> None:
-    evidence = [_evidence("A"), {**_evidence("B", 2), "id": "E2"}]
+    evidence: list[Evidence] = [_evidence("A"), _evidence("B", 2, id="E2")]
     ok = ground(RagAnswer(found=True, answer="x", citations=["E2", "E9", "E2"]), evidence)
     assert ok["found"] and [c["page"] for c in ok["citations"]] == [2]
     bad = ground(RagAnswer(found=True, answer="x", citations=["E9"]), evidence)

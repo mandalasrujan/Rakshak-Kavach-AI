@@ -13,7 +13,7 @@ import operator
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, TypedDict, cast
 
 import structlog
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.tools import AgentTools, Evidence, route
 from app.core.config import Settings
+from app.core.tracing import TurnTrace
 from app.llm.base import LLMProvider
 from app.repositories.chat_repository import ChatRepository
 from app.services.consent_service import ConsentService
@@ -108,17 +109,28 @@ def fixed(answer: str, *, urgent: bool = False) -> dict[str, Any]:
     return {"found": False, "answer": answer, "citations": [], "urgent": urgent}
 
 
-def _timed(name: str, node: Callable[[AgentState], Awaitable[dict[str, Any]]]):  # type: ignore[no-untyped-def]
+def _timed(
+    name: str,
+    node: Callable[[AgentState], Awaitable[dict[str, Any]]],
+    turn_trace: TurnTrace | None = None,
+):  # type: ignore[no-untyped-def]
     async def run(state: AgentState) -> dict[str, Any]:
         started = time.perf_counter()
         try:
             return await node(state)
         finally:  # per-node latency; never state contents
+            duration = round((time.perf_counter() - started) * 1000, 1)
             log.info(
                 "agent.node",
                 node=name,
-                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                duration_ms=duration,
             )
+            if turn_trace is not None:
+                turn_trace.record_node(
+                    name=name,
+                    duration_ms=duration,
+                    outcome=state.get("outcome"),
+                )
 
     return run
 
@@ -131,6 +143,7 @@ def build_agent_graph(
     settings: Settings,
     chat_id: uuid.UUID | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    turn_trace: TurnTrace | None = None,
 ):  # type: ignore[no-untyped-def]
     tools = AgentTools(session, patient_id, llm=llm, settings=settings)
 
@@ -172,17 +185,35 @@ def build_agent_graph(
         return {"outcome": "output_blocked", "response": fixed(OUTPUT_BLOCKED_ANSWER)}
 
     async def run_tools(state: AgentState) -> dict[str, Any]:
+        started = time.perf_counter()
         calls = route(state["question"])
         evidence = await tools.run(calls, state["question"])
+        duration = round((time.perf_counter() - started) * 1000, 1)
         log.info("agent.tools", tools=[c["tool"] for c in calls], evidence=len(evidence))
+        if turn_trace is not None:
+            turn_trace.record_tools(
+                tool_names=[c["tool"] for c in calls],
+                evidence_count=len(evidence),
+                duration_ms=duration,
+            )
         if not evidence:  # nothing in the records: no LLM call at all
             return {"evidence": [], "outcome": "no_evidence", "response": not_found()}
         return {"evidence": evidence, "outcome": "retrieved"}
 
     async def answer(state: AgentState) -> dict[str, Any]:
+        started = time.perf_counter()
         prompt = build_prompt(state["question"], state["evidence"], state.get("messages", []))
         raw = await llm.generate_json(system=AGENT_SYSTEM_PROMPT, prompt=prompt, schema=RagAnswer)
-        return {"response": ground(raw, state["evidence"]), "outcome": "answered"}
+        duration = round((time.perf_counter() - started) * 1000, 1)
+        grounded = ground(raw, state["evidence"])
+        if turn_trace is not None:
+            turn_trace.record_generation(
+                model=getattr(llm, "chat_model", "unknown"),
+                duration_ms=duration,
+                found=grounded["found"],
+                citations_count=len(grounded["citations"]),
+            )
+        return {"response": grounded, "outcome": "answered"}
 
     async def finalize(state: AgentState) -> dict[str, Any]:
         response = state.get("response") or not_found()
@@ -198,7 +229,7 @@ def build_agent_graph(
             ]
         }
 
-    graph = StateGraph(AgentState)
+    graph = StateGraph(cast(Any, AgentState))
     for name, node in (
         ("consent", consent),
         ("red_flags", red_flags),
@@ -208,7 +239,7 @@ def build_agent_graph(
         ("output_guard", output_guard),
         ("finalize", finalize),
     ):
-        graph.add_node(name, _timed(name, node))
+        graph.add_node(name, _timed(name, node, turn_trace))
 
     def next_if(expected: str, target: str):  # type: ignore[no-untyped-def]
         return lambda s: target if s["outcome"] == expected else "finalize"

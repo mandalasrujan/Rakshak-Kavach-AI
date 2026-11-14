@@ -197,3 +197,33 @@ async def test_chat_routes_require_consent_and_csrf(client: AsyncClient) -> None
     await grant_consent(client)
     assert (await client.post(CHATS)).status_code == 403  # no CSRF header
     assert (await client.post(CHATS, headers=CSRF)).status_code == 201
+
+
+async def test_agent_invokes_langfuse_tracing_safely(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    from app.core.tracing import LangfuseTracer
+
+    mock_client = MagicMock()
+    mock_root = MagicMock()
+    mock_client.start_observation.return_value = mock_root
+    mock_root.start_observation.return_value = MagicMock()
+
+    monkeypatch.setattr(
+        "app.agent.service.get_tracer",
+        lambda s: LangfuseTracer(client=mock_client),
+    )
+    await register_and_login(client, "tracing.test@example.com")
+    await grant_consent(client)
+
+    response = await client.post(
+        "/api/v1/patient/ask",
+        json={"question": "What was my hemoglobin?"},
+        headers=CSRF,
+    )
+    assert response.status_code == 200
+    assert mock_client.start_observation.called
+    assert mock_root.end.called

@@ -26,7 +26,9 @@ CSRF = {"X-CSRF-Protection": "1"}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--base-url", default="http://localhost:8080")
+    parser.add_argument(
+        "--base-url", default=os.environ.get("FRONTEND_ORIGIN", "http://127.0.0.1:8080")
+    )
     parser.add_argument("--email", default="demo.patient@example.com")
     parser.add_argument("--timeout", type=float, default=180, help="seconds to wait for processing")
     args = parser.parse_args()

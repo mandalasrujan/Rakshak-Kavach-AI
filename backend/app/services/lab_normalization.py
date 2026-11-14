@@ -45,12 +45,25 @@ _RANGE_BOTH = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|\u2013|to)\s*(\d+(?:\.\d+)?)")
 _RANGE_UPPER = re.compile(r"^(?:<=|<|≤|up\s*to|upto|less\s+than)\s*(\d+(?:\.\d+)?)", re.I)
 _RANGE_LOWER = re.compile(r"^(?:>=|>|≥|more\s+than|greater\s+than)\s*(\d+(?:\.\d+)?)", re.I)
 _DATE = r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})"
+_DATE_YMD = r"(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})"
 _COLLECTED = re.compile(
     r"(?:sample\s+collected|collected\s+on|collection\s+date|date\s+of\s+collection)\s*:?\s*"
     + _DATE,
     re.I,
 )
 _REPORTED = re.compile(r"(?:report\s+date|reported\s+on|date\s+of\s+report)\s*:?\s*" + _DATE, re.I)
+_PRESCRIPTION = re.compile(
+    r"(?:prescription\s+date|prescription\s+dated|prescribed\s+on|visit\s+date|consultation\s+date|consult\s+date|encounter\s+date|dated)\s*:?\s*"
+    + _DATE,
+    re.I,
+)
+_PRESCRIPTION_YMD = re.compile(
+    r"(?:prescription\s+date|prescription\s+dated|prescribed\s+on|visit\s+date|consultation\s+date|consult\s+date|encounter\s+date|dated)\s*:?\s*"
+    + _DATE_YMD,
+    re.I,
+)
+_GENERIC_DATE = re.compile(r"(?:^|[\n;])\s*date\s*:?\s*" + _DATE, re.I)
+_GENERIC_DATE_YMD = re.compile(r"(?:^|[\n;])\s*date\s*:?\s*" + _DATE_YMD, re.I)
 
 
 @dataclass(frozen=True)
@@ -193,6 +206,14 @@ def _to_date(day: str, month: str, year: str) -> tuple[date | None, bool]:
     return parsed, ambiguous
 
 
+def _to_iso_date(year: str, month: str, day: str) -> tuple[date | None, bool]:
+    try:
+        parsed = date(int(year), int(month), int(day))  # YYYY-MM-DD
+    except ValueError:
+        return None, False
+    return parsed, False
+
+
 def parse_document_dates(texts: list[str]) -> DocumentDates:
     collected = reported = None
     collected_ambiguous = reported_ambiguous = False
@@ -201,6 +222,14 @@ def parse_document_dates(texts: list[str]) -> DocumentDates:
             collected, collected_ambiguous = _to_date(*match.groups())
         if reported is None and (match := _REPORTED.search(text)):
             reported, reported_ambiguous = _to_date(*match.groups())
+        if reported is None and (match := _PRESCRIPTION.search(text)):
+            reported, reported_ambiguous = _to_date(*match.groups())
+        if reported is None and (match := _PRESCRIPTION_YMD.search(text)):
+            reported, reported_ambiguous = _to_iso_date(*match.groups())
+        if reported is None and (match := _GENERIC_DATE.search(text)):
+            reported, reported_ambiguous = _to_date(*match.groups())
+        if reported is None and (match := _GENERIC_DATE_YMD.search(text)):
+            reported, reported_ambiguous = _to_iso_date(*match.groups())
     ambiguous = collected_ambiguous if collected is not None else reported_ambiguous
     return DocumentDates(collected, reported, ambiguous)
 

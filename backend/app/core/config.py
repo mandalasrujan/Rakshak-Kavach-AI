@@ -25,8 +25,19 @@ class LLMSettings(BaseSettings):
     gemini_chat_model: str | None = None
     gemini_embedding_model: str | None = None
     llm_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str | None = None
 
-    @field_validator("gemini_api_key", "gemini_chat_model", "gemini_embedding_model", mode="before")
+    @field_validator(
+        "gemini_api_key",
+        "gemini_chat_model",
+        "gemini_embedding_model",
+        "langfuse_public_key",
+        "langfuse_secret_key",
+        "langfuse_host",
+        mode="before",
+    )
     @classmethod
     def _placeholders_are_unset(cls, value: object) -> object:
         if isinstance(value, str) and (not value.strip() or value.strip().startswith("<")):
@@ -116,6 +127,15 @@ class Settings(LLMSettings):
     @property
     def access_token_ttl_seconds(self) -> int:
         return self.access_token_expire_minutes * 60
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(
+            self.langfuse_public_key
+            and self.langfuse_secret_key
+            and self.langfuse_secret_key.get_secret_value()
+            and self.langfuse_host
+        )
 
 
 @lru_cache

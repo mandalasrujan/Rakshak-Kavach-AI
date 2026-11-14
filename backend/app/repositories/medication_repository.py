@@ -28,29 +28,46 @@ class MedicationRepository:
                 Medication.patient_id == self._patient_id, Medication.document_id == document_id
             )
         )
-        self._session.add_all(
-            Medication(
-                patient_id=self._patient_id,
-                document_id=document_id,
-                chunk_id=chunk_id,
-                page=item.page,
-                name=item.name,
-                dose=item.dose,
-                frequency=item.frequency,
-                duration=item.duration,
-                start_date=start_date,
-                raw_text=item.raw_text,
-                validation_status="ok",
+        seen: set[tuple[str, str | None, str | None, str | None]] = set()
+        to_add: list[Medication] = []
+        for chunk_id, item in medications:
+            key = (
+                item.name.strip().lower(),
+                item.dose.strip().lower() if item.dose else None,
+                item.frequency.strip().lower() if item.frequency else None,
+                item.duration.strip().lower() if item.duration else None,
             )
-            for chunk_id, item in medications
-        )
+            if key in seen:
+                continue
+            seen.add(key)
+            to_add.append(
+                Medication(
+                    patient_id=self._patient_id,
+                    document_id=document_id,
+                    chunk_id=chunk_id,
+                    page=item.page,
+                    name=item.name,
+                    dose=item.dose,
+                    frequency=item.frequency,
+                    duration=item.duration,
+                    start_date=start_date,
+                    raw_text=item.raw_text,
+                    validation_status="ok",
+                )
+            )
+        self._session.add_all(to_add)
         await self._session.flush()
 
-    async def list(self, *, limit: int = 50) -> list[Medication]:
+    async def list(self, *, limit: int = 200) -> list[Medication]:
         result = await self._session.execute(
             select(Medication)
             .where(Medication.patient_id == self._patient_id)
-            .order_by(Medication.start_date.desc().nulls_last(), Medication.name, Medication.id)
+            .order_by(
+                Medication.start_date.desc().nulls_last(),
+                Medication.document_id,
+                Medication.name,
+                Medication.id,
+            )
             .limit(limit)
         )
         return list(result.scalars())

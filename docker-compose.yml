@@ -12,6 +12,9 @@ x-llm-env: &llm-env
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-}
   GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
 
 services:
   postgres:
@@ -125,7 +128,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     depends_on:
       api:
         condition: service_healthy
