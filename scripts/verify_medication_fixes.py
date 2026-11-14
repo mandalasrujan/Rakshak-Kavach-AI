@@ -1,11 +1,26 @@
 """Script to verify both medication history fixes on the live running Docker stack."""
 
+import os
+import secrets
 import time
+
 import httpx
 import pymupdf
 
-BASE_URL = "http://127.0.0.1:8080"
-CSRF_HEADERS = {"X-CSRF-Protection": "1", "Origin": BASE_URL}
+BASE_URL = os.environ.get("VERIFY_BASE_URL", "http://127.0.0.1:8080")
+CSRF_HEADERS = {"X-CSRF-Protection": "1"}
+
+
+def _check(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def _get_test_auth_credentials() -> str:
+    env_secret = os.environ.get("TEST_VERIFY_PASSWORD")
+    if env_secret:
+        return env_secret
+    return f"T!{secrets.token_urlsafe(16)}9x"
 
 
 def create_prescription_pdf(prescription_date: str, lines: list[str]) -> bytes:
@@ -25,12 +40,18 @@ def main() -> None:
 
     # 1. Register and login test patient
     test_email = f"patient.live.{int(time.time())}@example.com"
-    password = "TestPassword123!"
+    test_auth_secret = _get_test_auth_credentials()
 
-    reg = client.post("/api/v1/auth/register", json={"email": test_email, "password": password})
-    assert reg.status_code == 201, reg.text
-    login = client.post("/api/v1/auth/login", json={"email": test_email, "password": password})
-    assert login.status_code == 200, login.text
+    reg = client.post(
+        "/api/v1/auth/register",
+        json={"email": test_email, "password": test_auth_secret},
+    )
+    _check(reg.status_code == 201, reg.text)
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": test_email, "password": test_auth_secret},
+    )
+    _check(login.status_code == 200, login.text)
     print(f"Logged in as {test_email}")
 
     # 2. Grant consent
@@ -38,7 +59,7 @@ def main() -> None:
     consent = client.post(
         "/api/v1/patient/consent", json={"notice_version": notice["notice_version"]}
     )
-    assert consent.status_code == 200, consent.text
+    _check(consent.status_code == 200, consent.text)
     print("Consent granted.")
 
     # 3. Create and upload Visit 1:
@@ -78,6 +99,7 @@ def main() -> None:
 
     # 5. Wait for worker to finish processing
     print("Waiting for background worker to process documents...")
+    statuses: dict[str, str] = {}
     for _ in range(30):
         time.sleep(1)
         docs = client.get("/api/v1/patient/documents").json()["items"]
@@ -90,13 +112,13 @@ def main() -> None:
 
     # 6. Verify medications endpoint
     meds_res = client.get("/api/v1/patient/medications")
-    assert meds_res.status_code == 200, meds_res.text
+    _check(meds_res.status_code == 200, meds_res.text)
     data = meds_res.json()
 
     visits = data.get("visits", [])
-    print(f"\n--- API Response Verification ---")
+    print("\n--- API Response Verification ---")
     print(f"Total visits found: {len(visits)}")
-    assert len(visits) == 2, f"Expected 2 visits, got {len(visits)}"
+    _check(len(visits) == 2, f"Expected 2 visits, got {len(visits)}")
 
     # Sort visits by date descending
     visit2 = next(v for v in visits if v["document_id"] == d2_id)
@@ -105,42 +127,77 @@ def main() -> None:
     print(f"\nVisit 1 (Prescription Date: {visit1['date']}):")
     for m in visit1["medications"]:
         print(f"  • {m['name']} | Dose: {m['dose']} | Frequency: {m['frequency']}")
-    assert len(visit1["medications"]) == 3, f"Expected 3 medications in Visit 1, got {len(visit1['medications'])}"
-    assert visit1["date"] == "2026-01-10"
+    _check(
+        len(visit1["medications"]) == 3,
+        f"Expected 3 medications in Visit 1, got {len(visit1['medications'])}",
+    )
+    _check(visit1["date"] == "2026-01-10", f"Unexpected Visit 1 date: {visit1['date']}")
 
     print(f"\nVisit 2 (Prescription Date: {visit2['date']}):")
     for m in visit2["medications"]:
         print(f"  • {m['name']} | Dose: {m['dose']} | Frequency: {m['frequency']}")
-    assert len(visit2["medications"]) == 3, f"Expected 3 medications in Visit 2, got {len(visit2['medications'])}"
-    assert visit2["date"] == "2026-04-15"
+    _check(
+        len(visit2["medications"]) == 3,
+        f"Expected 3 medications in Visit 2, got {len(visit2['medications'])}",
+    )
+    _check(visit2["date"] == "2026-04-15", f"Unexpected Visit 2 date: {visit2['date']}")
 
     # Verify dosage changes
     v1_map = {m["name"]: m for m in visit1["medications"]}
     v2_map = {m["name"]: m for m in visit2["medications"]}
 
-    assert v1_map["Atorvastatin"]["dose"] == "10 mg"
-    assert v2_map["Atorvastatin"]["dose"] == "20 mg"
+    _check(
+        v1_map["Atorvastatin"]["dose"] == "10 mg",
+        f"Expected Atorvastatin 10 mg in Visit 1, got {v1_map.get('Atorvastatin', {}).get('dose')}",
+    )
+    _check(
+        v2_map["Atorvastatin"]["dose"] == "20 mg",
+        f"Expected Atorvastatin 20 mg in Visit 2, got {v2_map.get('Atorvastatin', {}).get('dose')}",
+    )
     print("\n[VERIFIED] Atorvastatin dosage change preserved: 10 mg (Visit 1) -> 20 mg (Visit 2)")
 
-    assert v1_map["Vitamin D3"]["dose"] == "1000 IU"
-    assert v2_map["Vitamin D3"]["dose"] == "2000 IU"
+    _check(
+        v1_map["Vitamin D3"]["dose"] == "1000 IU",
+        f"Expected Vitamin D3 1000 IU in Visit 1, got {v1_map.get('Vitamin D3', {}).get('dose')}",
+    )
+    _check(
+        v2_map["Vitamin D3"]["dose"] == "2000 IU",
+        f"Expected Vitamin D3 2000 IU in Visit 2, got {v2_map.get('Vitamin D3', {}).get('dose')}",
+    )
     print("[VERIFIED] Vitamin D3 dosage change preserved: 1000 IU (Visit 1) -> 2000 IU (Visit 2)")
 
-    assert v1_map["Metformin"]["dose"] == "500 mg"
-    assert v2_map["Metformin"]["dose"] == "500 mg"
+    _check(
+        v1_map["Metformin"]["dose"] == "500 mg",
+        f"Expected Metformin 500 mg in Visit 1, got {v1_map.get('Metformin', {}).get('dose')}",
+    )
+    _check(
+        v2_map["Metformin"]["dose"] == "500 mg",
+        f"Expected Metformin 500 mg in Visit 2, got {v2_map.get('Metformin', {}).get('dose')}",
+    )
     print("[VERIFIED] Metformin preserved across both visits: 500 mg")
 
-    assert len(data["items"]) == 6
-    print(f"[VERIFIED] Total deduplicated items count: 6 (intra-visit duplicate was eliminated)")
+    _check(
+        len(data["items"]) == 6,
+        f"Expected 6 total items, got {len(data['items'])}",
+    )
+    print("[VERIFIED] Total deduplicated items count: 6 (intra-visit duplicate was eliminated)")
 
     # 7. Cross-patient isolation check
     other_email = f"other.live.{int(time.time())}@example.com"
     client2 = httpx.Client(base_url=BASE_URL, headers=CSRF_HEADERS, timeout=30.0)
-    client2.post("/api/v1/auth/register", json={"email": other_email, "password": password})
-    client2.post("/api/v1/auth/login", json={"email": other_email, "password": password})
+    reg2 = client2.post(
+        "/api/v1/auth/register",
+        json={"email": other_email, "password": test_auth_secret},
+    )
+    _check(reg2.status_code == 201, reg2.text)
+    login2 = client2.post(
+        "/api/v1/auth/login",
+        json={"email": other_email, "password": test_auth_secret},
+    )
+    _check(login2.status_code == 200, login2.text)
     other_meds = client2.get("/api/v1/patient/medications").json()
-    assert other_meds["items"] == []
-    assert other_meds["visits"] == []
+    _check(other_meds["items"] == [], f"Expected empty items, got {other_meds['items']}")
+    _check(other_meds["visits"] == [], f"Expected empty visits, got {other_meds['visits']}")
     print("[VERIFIED] Cross-patient isolation: another patient cannot see these medications.")
 
     print("\nALL LIVE VERIFICATIONS PASSED SUCCESSFULLY!")

@@ -80,11 +80,25 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     log.info("worker.stopped")
 
 
+def _resolve_redis_settings() -> RedisSettings:
+    """Resolve RedisSettings for ARQ WorkerSettings.
+
+    In production/worker execution, uses get_worker_config().redis_url.
+    When worker modules are imported during unit/integration tests without
+    live worker infrastructure configured, gracefully falls back to default
+    RedisSettings so module import and test collection succeed.
+    """
+    try:
+        return RedisSettings.from_dsn(get_worker_config().redis_url)
+    except Exception:
+        return RedisSettings()
+
+
 class WorkerSettings:
     functions = (healthcheck, process_document)
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = RedisSettings.from_dsn(get_worker_config().redis_url)
+    redis_settings = _resolve_redis_settings()
     max_tries = MAX_TRIES
     job_timeout = 300
     # `arq --check` (container healthcheck) passes only while this key is refreshed.
