@@ -20,6 +20,7 @@ from app.core.errors import (
     RateLimitedError,
     ServiceUnavailableError,
 )
+from app.core.tracing import get_tracer
 from app.llm.base import LLMError, LLMProvider
 from app.models.chat import Chat
 from app.repositories.audit_repository import AuditRepository
@@ -76,6 +77,12 @@ class AgentService:
         if self._llm is None:
             raise LLMUnavailableError()
         await self._enforce_rate_limit()
+        tracer = get_tracer(self._settings)
+        turn_trace = tracer.start_turn(
+            patient_id=self._patient_id,
+            chat_id=chat_id,
+            question=question,
+        )
         graph = build_agent_graph(
             session=self._session,
             patient_id=self._patient_id,
@@ -83,19 +90,37 @@ class AgentService:
             settings=self._settings,
             chat_id=chat_id,
             checkpointer=self._checkpointer() if chat_id else None,
+            turn_trace=turn_trace,
         )
         config = {"configurable": {"thread_id": str(chat_id)}} if chat_id else None
         started = time.perf_counter()
         try:
             state = await graph.ainvoke(turn_input(question), config=config)
         except LLMError as exc:
+            duration = round((time.perf_counter() - started) * 1000, 1)
+            turn_trace.record_error(type(exc).__name__)
+            turn_trace.end(outcome="error", duration_ms=duration)
             log.warning(
                 "agent.llm_error", patient_id=str(self._patient_id), error_type=type(exc).__name__
             )
             raise LLMUnavailableError() from exc
+        except Exception as exc:
+            duration = round((time.perf_counter() - started) * 1000, 1)
+            turn_trace.record_error(type(exc).__name__)
+            turn_trace.end(outcome="error", duration_ms=duration)
+            raise
+
+        duration = round((time.perf_counter() - started) * 1000, 1)
         if state["outcome"] == "no_consent":
+            turn_trace.end(outcome="no_consent", duration_ms=duration)
             raise ConsentRequiredError()
         response = state["response"]
+        turn_trace.end(
+            outcome=state["outcome"],
+            found=response["found"],
+            cited=len(response["citations"]),
+            duration_ms=duration,
+        )
         log.info(
             "agent.answered",
             patient_id=str(self._patient_id),
@@ -103,7 +128,7 @@ class AgentService:
             outcome=state["outcome"],
             found=response["found"],
             cited=len(response["citations"]),
-            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            duration_ms=duration,
         )
         return AgentReply(chat_id=chat_id, **response)
 

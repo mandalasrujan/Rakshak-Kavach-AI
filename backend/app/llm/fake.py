@@ -26,6 +26,7 @@ def tokens(text: str) -> list[str]:
 
 
 class FakeLLMProvider:
+    chat_model = "fake-extractive"
     embedding_model = FAKE_EMBEDDING_MODEL
     embedding_dimension = EMBEDDING_DIMENSION
 

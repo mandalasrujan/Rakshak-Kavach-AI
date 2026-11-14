@@ -11,8 +11,8 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 | **Phase 1** | M0 – M2 | Foundation, Architecture, Auth | **COMPLETED & VERIFIED** |
 | **Phase 2** | M3 – M5 | Consent, Document Ingestion, Table Extraction | **COMPLETED & VERIFIED** |
 | **Phase 3** | M6 – M9 | Isolation, RLS, Embeddings, Baseline RAG, Normalization, Lab Math | **COMPLETED & VERIFIED** (live-Gemini eval pending) |
-| **Phase 4** | M10 – M12 (M13 not started) | LangGraph Agent, Safety Nodes, Cascading Deletion | **M10–M12 COMPLETED & VERIFIED** (live-Gemini eval pending) |
-| **Phase 5** | M14 – M17 | QR/PIN Scoped Sharing, Dashboard UI, Golden Evals, Load Testing & Polish | NOT STARTED |
+| **Phase 4** | M10 – M12 | LangGraph Agent, Safety Nodes, Cascading Deletion | **COMPLETED & VERIFIED** (live-Gemini eval pending) |
+| **Phase 5** | M13 – M17 | Snapshots, QR/PIN Scoped Sharing, Dashboard UI, Golden Evals & CI, Load Testing & Polish | **COMPLETED & VERIFIED** (all blockers resolved; live-Gemini eval pending) |
 
 ---
 
@@ -33,11 +33,11 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 | **M10** | LangGraph Agent | LangGraph graph (consent → red flags → input guard → deterministic tools → answer → output guard), tools `search_records` / `get_labs` / `get_medications`, RLS-backed checkpointer, chats, 10/10 tool selection | **COMPLETED** | **VERIFIED (Tests + Ruff + native run; offline provider)** | [`M10_LANGGRAPH_MEDICAL_HISTORY_AGENT.md`](M10_LANGGRAPH_MEDICAL_HISTORY_AGENT.md) |
 | **M11** | Safety Nodes | Versioned YAML red flags with negation/history (recall 1.0, precision 1.0 on in-sample set), injection input guard, no-diagnosis + numeric output guard, urgent cannot be overridden | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M11_SAFETY_NODES_AND_GUARDRAILS.md`](M11_SAFETY_NODES_AND_GUARDRAILS.md) |
 | **M12** | Deletion Pipeline | Retry-safe cascade deleting file, chunks/embeddings, labs, medications, citing chats + checkpoints; row lock stops workers recreating data | **COMPLETED** | **VERIFIED (Tests + Ruff + native run)** | [`M12_SECURE_PATIENT_DATA_DELETION.md`](M12_SECURE_PATIENT_DATA_DELETION.md) |
-| **M13** | Summary Snapshots | Schema-valid doctor summary snapshot built from SQL with optional guard-checked narrative; patient preview and approval flow | NOT STARTED | Pending Implementation | `M13_SUMMARY_SNAPSHOTS.md` (Planned) |
-| **M14** | Scoped Sharing | 32-byte hashed token + 6-digit hashed PIN with 5-attempt lockout, scope limits, expiry, session exchange, token stripped from URL | NOT STARTED | Pending Implementation | `M14_SCOPED_SHARING.md` (Planned) |
-| **M15** | Dashboard | Five read-only patient dashboard panels (documents, medications, labs with previous comparison, consent, access logs) linking to source pages | NOT STARTED | Pending Implementation | `M15_DASHBOARD.md` (Planned) |
-| **M16** | Evals & CI | 25 to 30 golden test cases in CI with mocked LLM; leakage, red-flag, output guard, and retrieval regression tests | NOT STARTED | Pending Implementation | `M16_EVALS_AND_CI.md` (Planned) |
-| **M17** | Load Test & Polish | k6 load test run, restart-persistence tests, backup/restore runbook, demo seed data, measured latency and eval numbers in README | NOT STARTED | Pending Implementation | `M17_LOAD_TEST_AND_POLISH.md` (Planned) |
+| **M13** | Summary Snapshots | Versioned snapshots; medications/labs/documents from SQL with page provenance; guarded AI narrative; approve-once immutability; invalidation + purge on source deletion | **COMPLETED** | **VERIFIED (11 tests + Ruff)** | [`M13_Summary_Snapshots.md`](M13_Summary_Snapshots.md) |
+| **M14** | Scoped Sharing | SHA-256 token in URL fragment + argon2id PIN, 5-attempt permanent lock, 30-min path-scoped session, scope-limited frozen snapshot, revocation cascades, RLS via SECURITY DEFINER owner lookup | **COMPLETED** | **VERIFIED (19 security tests + 2 mutation checks)** | [`M14_Doctor_Scoped_Sharing.md`](M14_Doctor_Scoped_Sharing.md) |
+| **M15** | Dashboard | React + Tailwind dashboard (records, assistant, labs, medications, summary, sharing, consent) + doctor share page; every value links to its source PDF page | **COMPLETED** | **VERIFIED (13 frontend tests incl. axe, build, 1 backend test)** | [`M15_Patient_Dashboard.md`](M15_Patient_Dashboard.md) |
+| **M16** | Evals & CI | 26-case golden eval end-to-end; CI jobs lint/test/migrations/frontend/compose; nightly + manual live Gemini eval | **COMPLETED** | **VERIFIED locally (actionlint clean; first Actions run pending)** | [`M16_Evals_and_CI.md`](M16_Evals_and_CI.md) |
+| **M17** | Load Test & Polish | k6 measurements, restart persistence, backup/restore drill, nginx frontend container, security headers, a11y, demo seed | **COMPLETED** | **VERIFIED (Full Docker stack + 330 tests + Langfuse tracing)** | [`M17_Load_Testing_and_Polish.md`](M17_Load_Testing_and_Polish.md) |
 
 ---
 
@@ -99,3 +99,29 @@ This tracker maintains the verified status of all 18 milestones (M0 through M17)
 - **Safety eval (in-sample, hand-written):** red-flag recall 22/22, precision 1.0; injection block 8/8, benign false blocks 0/8; diagnostic block 12/12, factual false blocks 0/10.
 - **Test Suite Results:** 289 passed, 0 failed, 0 skipped.
 - **Linting & Code Quality:** `ruff check .` clean; `ruff format --check .` 152 files compliant; frontend `npm run build` passes (frontend unchanged).
+
+### Phase 5 Verification (Executed 2026-11-11)
+- **Environment:** Linux sandbox, 1 vCPU / 4 GB, Python 3.12, PostgreSQL 16.15 + pgvector 0.6.0, Redis 7.0.15, Node 22, k6 0.54.0, nginx 1.24 (native services; Docker Hub unreachable, so images were not built here).
+- **Backend:** `pytest`: **321 passed, 0 failed, 0 skipped** (M0–M12 regression included; Phase 5 added 32).
+- **Frontend:** Vitest **13 passed, 0 failed**; `vite build` passes.
+- **Quality:** `ruff check .` clean; `ruff format --check .` 177 files compliant; `actionlint` clean.
+- **Migrations:** fresh database: upgrade → `alembic check` (no drift) → app role → downgrade base → upgrade, head `0011`. Test suite round trip passes.
+- **Golden eval (fake provider):** answers 9/12, not-found 1.0, isolation 1.0, red flags 1.0, injection 1.0, 0 cross-patient / 0 ungrounded citations.
+- **Load (k6, 1 vCPU):** reads p95 24.3 ms @208 req/s; ask p95 79.6 ms @53 req/s (fake LLM); login p95 449.6 ms; doctor view p95 17.6 ms @158 req/s; processing p95 656 ms; 0 errors in 13,102 requests.
+- **Operations:** restart persistence verified; backup/restore drill verified; nginx production config verified (headers, proxy, IP-spoof resistance, 413 body limit).
+- **Compose:** `docker compose config` valid (services: postgres, redis, migrate, api, worker, web).
+- **Security scan:** no secret patterns or hardcoded credentials found.
+
+### Phase 5 Blocker Resolution & Final Local Verification (Executed 2026-11-11)
+- **Environment:** Windows 11 host with Docker Desktop 29.9.3 (WSL2 engine) + Python 3.12.8, Node.js 22.12.0.
+- **Blockers Resolved:**
+  1. Frontend / Rollup cross-platform build: Fixed `package.json` optionalDependencies and `package-lock.json` for win32-x64-msvc and linux-x64-musl (Alpine).
+  2. Langfuse tracing: Integrated `langfuse==5.2.0` with deterministic PHI masking layer (`mask_phi`, `pseudonymize_id`), fail-safe error handling, and zero PHI egress.
+- **Docker Stack:** All 5 containers (`postgres`, `redis`, `api`, `worker`, `web`) healthy and serving traffic; `migrate` exited 0 with no Alembic drift.
+- **Backend Full Test Suite:** **330 passed, 0 failed, 0 skipped** (321 base + 8 tracing unit + 1 agent tracing integration).
+- **Frontend Test Suite & Build:** Vitest **13 passed, 0 failed**; `vite build` completed in 4.99s.
+- **Quality & Hygiene:** `ruff check .` clean (0 errors); `ruff format --check .` 191 files compliant; repository hygiene test passed (0 committed secrets).
+- **Golden Evaluation:** 26 clinical cases; 100% isolation, 100% red flag accuracy, 100% injection block rate, 0 cross-patient citations, 0 ungrounded citations.
+- **Doctor Sharing Security:** 19/19 security tests passed.
+- **20-Step Synthetic Patient E2E Workflow:** All 20 steps passed against live Docker containers.
+- **Final Verdict:** `READY — all previously identified blockers are fixed and regression verification passes`.

@@ -9,8 +9,12 @@ venv
 .pytest_cache
 .ruff_cache
 node_modules
-frontend
+frontend/node_modules
+frontend/dist
 docs
 tests
 data
+eval-results
+load-results
+loadtest
 *.pdf

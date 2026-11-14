@@ -47,6 +47,8 @@ class RequestContextMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers[self.header_name] = request_id
                 headers.setdefault("X-Content-Type-Options", "nosniff")
+                headers.setdefault("Referrer-Policy", "no-referrer")
+                headers.setdefault("X-Frame-Options", "DENY")
                 if scope["path"].startswith("/api/"):
                     headers.setdefault("Cache-Control", "no-store")
             await send(message)

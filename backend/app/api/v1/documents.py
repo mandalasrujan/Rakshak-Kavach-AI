@@ -116,3 +116,22 @@ async def delete_document(
 ) -> Response:
     await service.delete(document_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{document_id}/file",
+    summary="Your original PDF (append #page=N to open a cited page)",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}, 404: {"model": ErrorResponse}},
+)
+async def get_document_file(
+    document_id: uuid.UUID, service: DocumentService = Depends(get_document_service)
+) -> Response:
+    return Response(
+        content=await service.read_file(document_id),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="document-{document_id}.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )

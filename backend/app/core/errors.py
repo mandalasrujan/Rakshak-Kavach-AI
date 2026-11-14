@@ -160,3 +160,17 @@ class LLMUnavailableError(AppError):
     status_code = 503
     code = "llm_unavailable"
     message = "The answer service is temporarily unavailable."
+
+
+class ShareUnavailableError(AppError):
+    """One generic answer for unknown, expired, revoked or locked shares and sessions."""
+
+    status_code = 401
+    code = "share_unavailable"
+    message = "This share link is invalid, expired or revoked."
+
+
+class InvalidPinError(AppError):
+    status_code = 401
+    code = "invalid_pin"
+    message = "Incorrect PIN."

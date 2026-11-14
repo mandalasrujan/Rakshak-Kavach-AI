@@ -1,0 +1,62 @@
+name: Live LLM eval
+
+# Real Gemini evaluation, kept out of CI: manual or nightly, only with repository secrets.
+# Results measure actual Gemini quality and are uploaded as an artifact; only hard safety
+# invariants (red flags, injection, zero cross-patient/ungrounded citations) fail the job.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: rakshak_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d rakshak_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://ci:ci-only-password@localhost:5432/rakshak_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+      EVAL_LLM_PROVIDER: gemini
+      LLM_PROVIDER: gemini
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_CHAT_MODEL: ${{ vars.GEMINI_CHAT_MODEL }}
+      GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL }}
+    steps:
+      - name: Require Gemini configuration
+        run: |
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$GEMINI_CHAT_MODEL" ] || [ -z "$GEMINI_EMBEDDING_MODEL" ]; then
+            echo "::warning::GEMINI_API_KEY secret or GEMINI_*_MODEL variables not set; skipping live eval."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - if: env.SKIP != '1'
+        uses: actions/checkout@v4
+      - if: env.SKIP != '1'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - if: env.SKIP != '1'
+        run: pip install -r requirements-dev.txt
+      - if: env.SKIP != '1'
+        run: pytest tests/evals -m eval -s
+      - if: env.SKIP != '1'
+        run: python scripts/eval_retrieval.py --provider gemini --answers | tee eval-results/retrieval-gemini.json
+      - if: always() && env.SKIP != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-results
+          path: eval-results/

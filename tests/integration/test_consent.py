@@ -51,7 +51,8 @@ async def test_grant_and_revoke_are_audited(client: AsyncClient, app) -> None:  
     for row in rows:
         assert str(row.patient_id) == me["id"]
         assert row.actor_type == "patient"
-        assert row.metadata == {"notice_version": consent_notice.CONSENT_NOTICE_VERSION}
+        assert row.metadata["notice_version"] == consent_notice.CONSENT_NOTICE_VERSION
+        assert set(row.metadata) <= {"notice_version", "shares_revoked"}
         assert "audit@example.com" not in str(row.metadata)
 
 

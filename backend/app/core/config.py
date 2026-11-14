@@ -7,6 +7,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ACCESS_COOKIE_NAME = "rk_access"
+SHARE_COOKIE_NAME = "rk_share"  # doctor session; path-scoped to /api/v1/share
 CSRF_HEADER_NAME = "X-CSRF-Protection"
 REQUEST_ID_HEADER = "X-Request-ID"
 _MIN_SECRET_LENGTH = 32
@@ -24,8 +25,19 @@ class LLMSettings(BaseSettings):
     gemini_chat_model: str | None = None
     gemini_embedding_model: str | None = None
     llm_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str | None = None
 
-    @field_validator("gemini_api_key", "gemini_chat_model", "gemini_embedding_model", mode="before")
+    @field_validator(
+        "gemini_api_key",
+        "gemini_chat_model",
+        "gemini_embedding_model",
+        "langfuse_public_key",
+        "langfuse_secret_key",
+        "langfuse_host",
+        mode="before",
+    )
     @classmethod
     def _placeholders_are_unset(cls, value: object) -> object:
         if isinstance(value, str) and (not value.strip() or value.strip().startswith("<")):
@@ -56,6 +68,12 @@ class Settings(LLMSettings):
     rag_top_k: int = Field(default=6, ge=1, le=20)
     rag_min_similarity: float = Field(default=0.2, ge=0, le=1)
     ask_max_per_hour: int = Field(default=60, ge=1)
+
+    share_max_expiry_minutes: int = Field(default=1440, ge=10, le=10080)
+    doctor_session_minutes: int = Field(default=30, ge=5, le=120)
+    share_pin_max_attempts: int = Field(default=5, ge=1, le=10)
+    share_exchange_max_per_ip: int = Field(default=20, ge=1)
+    share_exchange_window_seconds: int = Field(default=900, ge=1)
 
     storage_backend: Literal["local"] = "local"
     storage_local_path: str = "./storage"
@@ -109,6 +127,15 @@ class Settings(LLMSettings):
     @property
     def access_token_ttl_seconds(self) -> int:
         return self.access_token_expire_minutes * 60
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(
+            self.langfuse_public_key
+            and self.langfuse_secret_key
+            and self.langfuse_secret_key.get_secret_value()
+            and self.langfuse_host
+        )
 
 
 @lru_cache
